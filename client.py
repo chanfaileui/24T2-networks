@@ -40,7 +40,7 @@ from classes import (
     TYPE_CNAME,
     TYPE_NS,
     TYPE_INVALID,
-    get_qtype
+    get_qtype,
 )
 
 
@@ -113,14 +113,11 @@ class Client:
         while self._is_active:
             try:
                 self.client_socket.settimeout(self.timeout)
-                incoming_message, sender_address = self.client_socket.recvfrom(
-                    BUFFERSIZE
-                )
-                client_port = sender_address[1]
+                incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
                 # logging.info(f"received reply from receiver:, {incoming_message}")
                 # decoded_message = incoming_message.decode("utf-8")
                 # logging.info(f"decoded reply from receiver:, {decoded_message}")
-                self.handle_response(incoming_message, client_port)
+                self.handle_response(incoming_message)
                 self.response_received_event.set()
                 self._is_active = False  # Stop listening after receiving the response
             except socket.timeout:
@@ -136,7 +133,7 @@ class Client:
         while self._is_active:
             incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
 
-    def handle_response(self, response, client_port):
+    def handle_response(self, response):
         """
         Process the DNS response from the server.
 
@@ -157,7 +154,7 @@ class Client:
 
         print("\nQUESTION SECTION:")
         for question in questions:
-            print(f"QNAME: {question.qname}, QTYPE: {get_qtype(question.qtype)}")
+            print(f"{question.qname:20}{get_qtype(question.qtype):5}")
 
         if answers:
             print("\nANSWER SECTION:")
@@ -177,7 +174,9 @@ class Client:
         return dns_response
 
     def print_record(self, record):
-        print(f"NAME: {record.name}, TYPE: {get_qtype(record.type_)}, DATA: {record.data}")
+        print(
+            f"{record.name:20}{get_qtype(record.type_):5}{record.data:20}"
+        )
 
     def decode_name(self, reader):
         parts = []
@@ -192,7 +191,7 @@ class Client:
                 break
             else:
                 parts.append(reader.read(length).decode("utf-8"))
-        return ".".join(parts)
+        return ".".join(parts) + "."
 
     def decode_compressed_name(self, length, reader):
         pointer_bytes = bytes([length & 0b0011_1111]) + reader.read(1)

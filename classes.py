@@ -193,7 +193,7 @@ class DNSResponse:
                 break
             else:
                 parts.append(reader.read(length).decode("ascii"))
-        return ".".join(parts) if parts else ""
+        return (".".join(parts) + ".") if parts else ""
 
     @staticmethod
     def parse_record(reader: BytesIO) -> DNSRecord:

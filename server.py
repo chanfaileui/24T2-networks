@@ -38,7 +38,7 @@ from classes import (
     DNSResponse,
     BUFFERSIZE,
     FLAG_RESPONSE,
-    get_qtype
+    get_qtype,
 )
 
 MASTER_FILE = "sample_master.txt"
@@ -272,4 +272,4 @@ if __name__ == "__main__":
     try:
         server.run()
     except KeyboardInterrupt:
-        print('\nExiting...')
+        print("\nExiting...")
