@@ -25,115 +25,22 @@ import socket  # Core lib, to send packet via UDP socket
 from threading import (
     Thread,
 )  # (Optional)threading will make the timer easily implemented
-from dataclasses import dataclass
 import dataclasses
 import struct
-from typing import List
 
-BUFFERSIZE = 1024
-
-HEADER_FIELDS = 4
-
-FLAG_QUERY = 0
-FLAG_RESPONSE = 1
-
-# according to https://datatracker.ietf.org/doc/html/rfc1035#section-3.2.2
-TYPE_INVALID = 0
-TYPE_A = 1
-TYPE_NS = 2
-TYPE_CNAME = 5
-
-
-# with reference to https://implement-dns.wizardzines.com/book/part_1
-@dataclass
-class DNSHeader:
-    qid: int  # 16-bit unsigned integer as an identifier for the query
-    flags: int  # Flags to represent various settings (e.g., query/response)
-    num_questions: int = 0
-    num_answers: int = 0
-    num_authorities: int = 0
-    num_additionals: int = 0
-
-    @classmethod
-    def from_bytes(cls, data: bytes):
-        qid, flags, num_questions, num_answers, num_authorities, num_additionals = struct.unpack('!HHHHHH', data[:12])
-        return cls(qid, flags, num_questions, num_answers, num_authorities, num_additionals)
-
-
-
-@dataclass
-class DNSQuestion:
-    qname: int  # target domain name of query
-    qtype: int  #  type of the query
-    qclass: int = 1  # 1 for internet
-
-
-@dataclass
-class DNSRecord:
-    name: bytes  # domain name
-    type_: int  #  type of the resource record
-    data: bytes  # type-dependent data which describes the resource
-
-
-@dataclass
-class DNSResponse:
-    header: DNSHeader
-    question: List[DNSQuestion]
-    answer: List[DNSRecord]
-    authority: List[DNSRecord]
-    additional: List[DNSRecord]
-
-    @classmethod
-    def from_bytes(cls, data: bytes):
-        reader = BytesIO(data)
-        
-        # Parse the header
-        header = DNSHeader.from_bytes(reader.read(12))
-
-        # Parse the questions
-        questions = []
-        for _ in range(header.num_questions):
-            qname = cls.decode_name(reader)
-            qtype, qclass = struct.unpack('!HH', reader.read(4))
-            questions.append(DNSQuestion(qname, qtype, qclass))
-
-        # Parse the answers
-        answers = [cls.parse_record(reader) for _ in range(header.num_answers)]
-
-        # Parse the authorities
-        authorities = [cls.parse_record(reader) for _ in range(header.num_authorities)]
-
-        # Parse the additionals
-        additionals = [cls.parse_record(reader) for _ in range(header.num_additionals)]
-
-        return cls(header, questions, answers, authorities, additionals)
-
-    @staticmethod
-    def decode_name(reader: BytesIO) -> str:
-        parts = []
-        while True:
-            length = reader.read(1)[0]
-            if length == 0:
-                break
-            elif length & 0b11000000 == 0b11000000:
-                pointer = struct.unpack('!H', reader.read(1))[0] & 0x3FFF
-                current_pos = reader.tell()
-                reader.seek(pointer)
-                parts.append(DNSResponse.decode_name(reader))
-                reader.seek(current_pos)
-                break
-            else:
-                parts.append(reader.read(length).decode('ascii'))
-        return '.'.join(parts)
-
-    @staticmethod
-    def parse_record(reader: BytesIO) -> DNSRecord:
-        name = DNSResponse.decode_name(reader)
-        type_, class_, ttl, data_len = struct.unpack('!HHIH', reader.read(10))
-        data = reader.read(data_len)
-        return DNSRecord(name, type_, class_, ttl, data_len, data)
-
-
+from classes import (
+    DNSHeader,
+    DNSQuestion,
+    DNSRecord,
+    DNSResponse,
+    BUFFERSIZE,
+    FLAG_QUERY,
+    FLAG_RESPONSE,
+    TYPE_A,
+    TYPE_CNAME,
+    TYPE_NS,
+    TYPE_INVALID
+)
 
 class Client:
     def __init__(
@@ -237,7 +144,7 @@ class Client:
 
         :param response: The response packet from the server.
         """
-        print('response received:', response)
+        print("response received:", response)
         dns_response = DNSResponse.from_bytes(response)
         print(dns_response)
         # reader = BytesIO(response)

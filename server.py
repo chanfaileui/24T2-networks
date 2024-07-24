@@ -26,13 +26,38 @@ from threading import (
 )  # (Optional)threading will make the timer easily implemented
 import random  # for flp and rlp function
 
-
-from dataclasses import dataclass
-import dataclasses
 import struct
-from typing import List
 
-from client import DNSQuestion
+from classes import (
+    DNSHeader,
+    DNSQuestion,
+    DNSRecord,
+    DNSResponse,
+    BUFFERSIZE,
+    FLAG_QUERY,
+    TYPE_A,
+    TYPE_CNAME,
+    TYPE_NS,
+    TYPE_INVALID,
+    FLAG_QUERY,
+    FLAG_RESPONSE,
+)
+
+
+class DNSCache:
+    def __init__(self):
+        self.cache = {}
+
+    def add_record(self, qname, qtype, record):
+        if qname not in self.cache:
+            self.cache[qname] = {}
+        if qtype not in self.cache[qname]:
+            self.cache[qname][qtype] = []
+        self.cache[qname][qtype].append(record)
+
+    def get_records(self, qname, qtype):
+        return self.cache.get(qname, {}).get(qtype, [])
+
 
 class Server:
     def __init__(self, server_port: int) -> None:
