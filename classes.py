@@ -32,6 +32,7 @@ class DNSHeader:
         return struct.pack("!HHHHHH", *fields)
 
     # ref https://implement-dns.wizardzines.com/book/part_2
+    @staticmethod
     def parse_header(reader):
         items = struct.unpack("!HHHHHH", reader.read(12))
         return DNSHeader(*items)
@@ -39,21 +40,39 @@ class DNSHeader:
 
 @dataclass
 class DNSQuestion:
-    qname: int  # target domain name of query
+    qname: str  # target domain name of query
     qtype: int  #  type of the query
-    # qclass: int = 1  # 1 for internet
+
+    def to_bytes(self) -> bytes:
+        qname_parts = self.qname.split(".")
+        qname_bytes = (
+            b"".join(
+                (len(part).to_bytes(1, "big") + part.encode("ascii"))
+                for part in qname_parts
+            )
+            + b"\0"
+        )
+        return qname_bytes + struct.pack("!H", self.qtype)
 
 
 @dataclass
 class DNSRecord:
-    name: bytes  # domain name
+    name: str  # domain name
     type_: int  #  type of the resource record
     data: bytes  # type-dependent data which describes the resource
 
-    def to_bytes(self):
+    def to_bytes(self) -> bytes:
+        name_parts = self.name.split(".")
+        name_bytes = (
+            b"".join(
+                (len(part).to_bytes(1, "big") + part.encode("ascii"))
+                for part in name_parts
+            )
+            + b"\0"
+        )
         return (
-            self.name
-            + struct.pack("!HHI", self.type_, 1, 300)
+            name_bytes
+            + self.type_.to_bytes(2, byteorder="big")
             + struct.pack("!H", len(self.data))
             + self.data
         )
@@ -67,57 +86,53 @@ class DNSResponse:
     authority: List[DNSRecord]
     additional: List[DNSRecord]
 
-    def to_bytes(self):
+    def to_bytes(self) -> bytes:
         message = self.header.to_bytes()
-        print("message", message)
-        print("question", self.question)
         for q in self.question:
-            qname, qtype = q
-            message += (
-                qname.encode("ascii") + b"\0"
-            )  # QNAME is a domain name ending with a null byte
-            message += qtype.to_bytes(2, byteorder='big')  # QTYPE is 2 bytes
+            message += q.to_bytes()
+        for a in self.answer:
+            message += a.to_bytes()
+        for auth in self.authority:
+            message += auth.to_bytes()
+        for add in self.additional:
+            message += add.to_bytes()
         print("final sent message", message)
         return message
 
-    @classmethod
-    def decode_name_simple(cls, reader) -> str:
-        parts = []
-        while (length := reader.read(1)[0]) != 0:
-            parts.append(reader.read(length))
-        return ".".join(parts)
+    # def to_bytes(self):
+    #     message = self.header.to_bytes()
+    #     print("message", message)
+    #     print("question", self.question)
+    #     for q in self.question:
+    #         qname, qtype = q
+    #         message += (
+    #             qname.encode("ascii") + b"\0"
+    #         )  # QNAME is a domain name ending with a null byte
+    #         message += qtype.to_bytes(2, byteorder='big')  # QTYPE is 2 bytes
+    #     print("final sent message", message)
+    #     return message
+
+    # @classmethod
+    # def decode_name_simple(cls, reader) -> str:
+    #     parts = []
+    #     while (length := reader.read(1)[0]) != 0:
+    #         parts.append(reader.read(length))
+    #     return ".".join(parts)
 
     @classmethod
     def from_bytes(cls, data: bytes):
         reader = BytesIO(data)
         header = DNSHeader.parse_header(reader)
-        print("received header", header)
 
-        # Parse the questions
         questions = []
         for _ in range(header.num_questions):
-            name = cls.decode_name(reader)
-            data = reader.read(2)
-            type_ = struct.unpack("!H", data) 
-            # int.from_bytes(data, byteorder='big')
+            qname = cls.decode_name(reader)
+            qtype = struct.unpack("!H", reader.read(2))[0]
+            questions.append(DNSQuestion(qname, qtype))
 
-            questions.append(DNSQuestion(name, type_))
-        print("questions", questions)
-
-        # Parse the answers
-        answers = []
-        for _ in range(header.num_answers):
-            answers.append(cls.parse_record(reader))
-
-        # Parse the authority records
-        authorities = []
-        for _ in range(header.num_authorities):
-            authorities.append(cls.parse_record(reader))
-
-        # Parse the additional records
-        additionals = []
-        for _ in range(header.num_additionals):
-            additionals.append(cls.parse_record(reader))
+        answers = [cls.parse_record(reader) for _ in range(header.num_answers)]
+        authorities = [cls.parse_record(reader) for _ in range(header.num_authorities)]
+        additionals = [cls.parse_record(reader) for _ in range(header.num_additionals)]
 
         return cls(header, questions, answers, authorities, additionals)
 
@@ -147,6 +162,6 @@ class DNSResponse:
     @staticmethod
     def parse_record(reader: BytesIO) -> DNSRecord:
         name = DNSResponse.decode_name(reader)
-        type_, data_len = struct.unpack("!HH", reader.read(10))
+        type_, data_len = struct.unpack("!HH", reader.read(4))
         data = reader.read(data_len)
         return DNSRecord(name, type_, data)

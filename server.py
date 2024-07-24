@@ -18,6 +18,7 @@
 """
 # here are the libs you may find it useful:
 from io import BytesIO
+import json
 from pathlib import Path
 import threading
 import datetime, time  # to calculate the time delta of packet transmission
@@ -56,6 +57,7 @@ class DNSCache:
         return self.cache
 
     def add_record(self, qname, qtype, record):
+        qname = qname.lower()
         if qname not in self.cache:
             self.cache[qname] = {}
         if qtype not in self.cache[qname]:
@@ -63,6 +65,7 @@ class DNSCache:
         self.cache[qname][qtype].append(record)
 
     def get_records(self, qname, qtype):
+        qname = qname.lower()
         return self.cache.get(qname, {}).get(qtype, [])
 
     def print(self):
@@ -96,7 +99,6 @@ class Server:
 
     def load_records(self, filename: str):
         # Implement loading records from the master file into self.cache
-        records = {}
         filepath = Path(filename)
 
         if not filepath.exists():
@@ -108,7 +110,7 @@ class Server:
                 self.cache.add_record(qname, qtype, record)
 
         logging.info(f"Loaded {len(self.cache.get_cache())} records from {filename}")
-        # print(self.cache.get_cache())
+        print(json.dumps(self.cache.get_cache()))
 
     def run(self) -> None:
         logging.info(
@@ -133,59 +135,110 @@ class Server:
         # while True:
         # try to receive any incoming message from the sender
         try:
+            received_time = datetime.datetime.now()
             logging.debug(
                 f"Get a new message: {incoming_message} from {client_address}"
             )
-            header = incoming_message[:12]  # 12 bytes header
-            (qid, flags, qdcount, ancount, nscount, arcount) = struct.unpack(
-                "!HHHHHH", header
-            )
+            # header = incoming_message[:12]  # 12 bytes header
+            # (qid, flags, qdcount, ancount, nscount, arcount) = struct.unpack(
+            #     "!HHHHHH", header
+            # )
 
+            header = DNSHeader.parse_header(BytesIO(incoming_message[:12]))
             logging.debug(
-                f"ID: {qid}, Flags: {flags}, QDCOUNT: {qdcount}, ANCOUNT: {ancount}, NSCOUNT: {nscount}, ARCOUNT: {arcount}"
+                f"ID: {header.qid}, Flags: {header.flags}, QD_COUNT: {header.num_questions}, AN_COUNT: {header.num_answers}, AU_COUNT: {header.num_authorities}, ADD_COUNT: {header.num_additionals}"
             )
 
-            offset = 12
-            questions = []
-            for _ in range(qdcount):
-                qname, offset = self.decode_qname(incoming_message, offset)
-                qtype = int.from_bytes(
-                    incoming_message[offset : offset + 2], byteorder="big"
-                )  # 2 bytes for QTYPE
-                offset += 2
-                questions.append((qname, qtype))
-                logging.debug(f"Question: {qname}, QTYPE: {qtype}")
+            questions = self.parse_questions(incoming_message, header.num_questions)
+            for question in questions:
+                # TODO: UNCOMMENT BEFORE SUBMITTING!!!
+                # delay = random.randint(0, 4)
+                # print(
+                #     f"{received_time.strftime('%Y-%m-%d:%H:%M:%S')},rcv,{client_address[1]}:{qid},{qname},{qtype} (delay: {delay}s)"
+                # )
 
-            # answers = []
-            # for _ in range(ancount):
-            #     name, offset = self.decode_qname(incoming_message, offset)
-            #     rtype, rclass, ttl, rdlength = struct.unpack('!HHIH', incoming_message[offset:offset + 10])
-            #     offset += 10
-            #     rdata = incoming_message[offset:offset + rdlength]
-            #     offset += rdlength
-            #     answers.append((name, rtype, rclass, ttl, rdlength, rdata))
-            #     logging.debug(f'Answer: {name}, TYPE: {rtype}, CLASS: {rclass}, TTL: {ttl}, RDLENGTH: {rdlength}, RDATA: {rdata}')
+                # time.sleep(delay)
+
+                response = self.process_query(header.qid, question)
+                self.server_socket.sendto(response, client_address)
+
+                sent_time = datetime.datetime.now()
+                print(
+                    f"{sent_time.strftime('%Y-%m-%d:%H:%M:%S')},snd,{client_address[1]}:{header.qid},{question.qname},{question.qtype}"
+                )
 
         except Exception as e:
             logging.error(f"Error handling query: {e}")
 
-        logging.debug(
-            f"client{client_address} send a message: len= {len(incoming_message.decode('utf-8'))}"
+    def parse_questions(self, message, qdcount):
+        offset = 12
+        questions = []
+        for _ in range(qdcount):
+            qname, offset = self.decode_qname(message, offset)
+            qtype = struct.unpack("!H", message[offset : offset + 2])[0]
+            offset += 2 # 2 bytes for QTYPE
+            questions.append(DNSQuestion(qname, qtype))
+            logging.debug(f"Question: {qname}, QTYPE: {qtype}")
+        return questions
+
+    def process_query(self, qid: int, question: DNSQuestion) -> bytes:
+        qname = question.qname
+        qtype = (
+            "A"
+            if question.qtype == TYPE_A
+            else (
+                "CNAME"
+                if question.qtype == TYPE_CNAME
+                else "NS" if question.qtype == TYPE_NS else "INVALID"
+            )
         )
-        reply_header = DNSHeader(qid=qid, flags=FLAG_RESPONSE, num_questions=qdcount)
-        reply_message = DNSResponse(
-            header=reply_header,
-            question=questions,
+
+        if qtype == "INVALID":
+            raise ValueError("Invalid qtype")
+
+        print("qname:", qname, "qtype: ", qtype)
+        answers = self.cache.get_records(qname, qtype)
+
+        print("answers", answers)
+
+        # answers = []
+        # authority = []
+        # additional = []
+
+        # header = DNSHeader(
+        #     qid=qid,
+        #     flags=FLAG_RESPONSE,
+        #     num_questions=1,
+        #     num_answers=len(answers),
+        #     num_authorities=len(authority),
+        #     num_additionals=len(additional),
+        # )
+        # response = DNSResponse(
+        #     header=header,
+        #     question=[question],
+        #     answer=answers,
+        #     authority=authority,
+        #     additional=additional,
+        # )
+
+        header = DNSHeader(
+            qid=qid,
+            flags=FLAG_RESPONSE,
+            num_questions=1,
+            num_answers=0,
+            num_authorities=0,
+            num_additionals=0,
+        )
+
+        response = DNSResponse(
+            header=header,
+            question=[question],
             answer=[],
             authority=[],
             additional=[],
         )
 
-        # print("reply_message.to_bytes()", reply_message.to_bytes())
-        self.server_socket.sendto(reply_message.to_bytes(), client_address)
-
-    def process_query(self, qid, question):
-        pass
+        return response.to_bytes()
 
     def find_closest_nameservers(self, qname):
         # Implement logic to find the closest ancestor zone with known name servers
@@ -220,6 +273,6 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("\n===== Error usage, python3 server.py server_port ======\n")
         exit(0)
-
-    server = Server(*sys.argv[1:])
+    
+    server = Server(int(sys.argv[1]))
     server.run()

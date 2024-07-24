@@ -197,7 +197,7 @@ class Client:
                 break
             else:
                 parts.append(reader.read(length))
-        return b".".join(parts)
+        return ".".join(parts)
 
     def decode_compressed_name(self, length, reader):
         pointer_bytes = bytes([length & 0b0011_1111]) + reader.read(1)
@@ -218,7 +218,7 @@ class Client:
     def parse_question(self, reader):
         name = self.decode_name(reader)
         data = reader.read(4)
-        type_ = struct.unpack("!HH", data)
+        type_ = struct.unpack("!HH", data)[0]
         return DNSQuestion(name, type_)
 
     def parse_header(self, reader):
@@ -281,5 +281,5 @@ if __name__ == "__main__":
         )
         exit(0)
 
-    client = Client(*sys.argv[1:])
+    client = Client(int(sys.argv[1]), sys.argv[2], sys.argv[3], int(sys.argv[4]))
     client.run()
