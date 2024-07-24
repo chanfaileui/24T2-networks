@@ -39,6 +39,11 @@ from classes import (
     BUFFERSIZE,
     FLAG_RESPONSE,
     get_qtype,
+    TYPE_A,
+    TYPE_CNAME,
+    TYPE_NS,
+    TYPE_INVALID,
+    get_qtype,
 )
 
 MASTER_FILE = "sample_master.txt"
@@ -104,12 +109,14 @@ class Server:
                 qname, qtype, record = line.split()
                 self.cache.add_record(qname, qtype, record)
 
-        logging.info(f"Loaded {len(self.cache.get_cache())} records from {filename}")
-        # print(self.cache.get_cache())
+        # logging.info(f"Loaded {len(self.cache.get_cache())} records from {filename}")
 
     def run(self) -> None:
+        # logging.info(
+        #     f"The sender is using the address {self.server_address} to receive messages!"
+        # )
         logging.info(
-            f"The sender is using the address {self.server_address} to receive messages!"
+            f"Receiving at {self.server_address}:"
         )
         while True:
             try:
@@ -131,36 +138,32 @@ class Server:
         # try to receive any incoming message from the sender
         try:
             received_time = datetime.datetime.now()
-            logging.debug(
-                f"Get a new message: {incoming_message} from {client_address}"
-            )
+            # logging.debug(
+            #     f"Get a new message: {incoming_message} from {client_address}"
+            # )
             # header = incoming_message[:12]  # 12 bytes header
             # (qid, flags, qdcount, ancount, nscount, arcount) = struct.unpack(
             #     "!HHHHHH", header
             # )
 
             header = DNSHeader.parse_header(BytesIO(incoming_message[:12]))
-            logging.debug(
-                f"ID: {header.qid}, Flags: {header.flags}, QD_COUNT: {header.num_questions}, AN_COUNT: {header.num_answers}, AU_COUNT: {header.num_authorities}, ADD_COUNT: {header.num_additionals}"
-            )
+            # logging.debug(
+            #     f"ID: {header.qid}, Flags: {header.flags}, QD_COUNT: {header.num_questions}, AN_COUNT: {header.num_answers}, AU_COUNT: {header.num_authorities}, ADD_COUNT: {header.num_additionals}"
+            # )
 
             questions = self.parse_questions(incoming_message, header.num_questions)
             for question in questions:
                 # TODO: UNCOMMENT BEFORE SUBMITTING!!!
-                # delay = random.randint(0, 4)
-                # print(
-                #     f"{received_time.strftime('%Y-%m-%d:%H:%M:%S')},rcv,{client_address[1]}:{qid},{qname},{qtype} (delay: {delay}s)"
-                # )
+                delay = random.randint(0, 4)
+                print(f"{received_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} rcv {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype):<5} (delay: {delay}s)")
 
-                # time.sleep(delay)
+                time.sleep(delay)
 
                 response = self.process_query(header.qid, question)
                 self.server_socket.sendto(response, client_address)
 
                 sent_time = datetime.datetime.now()
-                print(
-                    f"{sent_time.strftime('%Y-%m-%d:%H:%M:%S')},snd,{client_address[1]}:{header.qid},{question.qname},{get_qtype(question.qtype)}"
-                )
+                print(f"{sent_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} snd {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype)}")
 
         except Exception as e:
             logging.error(f"Error handling query: {e}")
@@ -173,7 +176,6 @@ class Server:
             qtype = struct.unpack("!H", message[offset : offset + 2])[0]
             offset += 2  # 2 bytes for QTYPE
             questions.append(DNSQuestion(qname, qtype))
-            logging.debug(f"Question: {qname}, QTYPE: {qtype}")
         return questions
 
     def process_query(self, qid: int, question: DNSQuestion) -> bytes:
@@ -183,7 +185,6 @@ class Server:
         if qtype == "INVALID":
             raise ValueError("Invalid qtype")
 
-        print("qname:", qname, "qtype: ", qtype)
         answers_str = self.cache.get_records(question.qname, qtype)
         answers = [
             DNSRecord(
@@ -193,7 +194,6 @@ class Server:
             )
             for answer in answers_str
         ]
-        print("answers", answers)
 
         if not answers:
             closest_nameservers = self.find_closest_nameservers(qname)
@@ -201,6 +201,24 @@ class Server:
                 answers = closest_nameservers
             else:
                 return b""
+            
+        if not answers and qtype != TYPE_CNAME:
+            cname_records = self.cache.get_records(qname, TYPE_CNAME)
+            if cname_records:
+                answers = cname_records
+                qname = cname_records[0].rdata.decode('ascii')
+                answers.extend(self.cache.get_records(qname, qtype))
+
+        if not answers:
+            # Handle referral
+            ns_records = self.find_closest_nameservers(qname)
+            authority = ns_records
+            additional = []
+            for ns_record in ns_records:
+                additional.extend(self.cache.get_records(ns_record.rdata.decode('ascii'), TYPE_A))
+        else:
+            authority = []
+            additional = []
 
         authority = []
         additional = []
@@ -224,9 +242,15 @@ class Server:
         return response.to_bytes()
 
     def find_closest_nameservers(self, qname):
-        newqname = qname.split(".", 1)[1]
-        print("newqname", newqname)
-        pass
+        labels = qname.split('.')
+        for i in range(len(labels)):
+            ancestor = '.'.join(labels[i:])
+            if ancestor == '':
+                ancestor = '.'  # Root domain
+            ns_records = self.cache.get_records(ancestor, TYPE_NS)
+            if ns_records:
+                return ns_records
+        return []  # If no nameservers found, return an empty list
 
     @staticmethod
     def decode_qname(message, offset):
