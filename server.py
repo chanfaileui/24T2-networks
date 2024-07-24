@@ -37,12 +37,9 @@ from classes import (
     DNSRecord,
     DNSResponse,
     BUFFERSIZE,
-    FLAG_QUERY,
     TYPE_A,
     TYPE_CNAME,
     TYPE_NS,
-    TYPE_INVALID,
-    FLAG_QUERY,
     FLAG_RESPONSE,
 )
 
@@ -110,7 +107,7 @@ class Server:
                 self.cache.add_record(qname, qtype, record)
 
         logging.info(f"Loaded {len(self.cache.get_cache())} records from {filename}")
-        print(json.dumps(self.cache.get_cache()))
+        # print(self.cache.get_cache())
 
     def run(self) -> None:
         logging.info(
@@ -255,7 +252,10 @@ class Server:
                 break
             labels.append(message[offset + 1 : offset + 1 + length].decode("ascii"))
             offset += 1 + length
-        return ".".join(labels), offset
+        
+        qname = ".".join(labels) + "."  # Re-add the trailing dot
+        return qname, offset
+
 
 
 if __name__ == "__main__":

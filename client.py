@@ -255,12 +255,17 @@ class Client:
         :return: Byte representation of the DNS question
         """
         qname_parts = question.qname.split(".")
+        
+        # Remove the last empty part if qname ends with a dot
+        if qname_parts[-1] == '':
+            qname_parts = qname_parts[:-1]
+
         qname_bytes = (
             b"".join(
                 (len(part).to_bytes(1, "big") + part.encode("ascii"))
                 for part in qname_parts
             )
-            # + b"\x00"
+            + b"\x00"
         )
         return qname_bytes + question.qtype.to_bytes(2, byteorder='big')
 
