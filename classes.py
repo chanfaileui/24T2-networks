@@ -41,7 +41,7 @@ class DNSHeader:
 class DNSQuestion:
     qname: int  # target domain name of query
     qtype: int  #  type of the query
-    qclass: int = 1  # 1 for internet
+    # qclass: int = 1  # 1 for internet
 
 
 @dataclass
@@ -72,13 +72,11 @@ class DNSResponse:
         print("message", message)
         print("question", self.question)
         for q in self.question:
-            qname, qtype, qclass = q
+            qname, qtype = q
             message += (
                 qname.encode("ascii") + b"\0"
             )  # QNAME is a domain name ending with a null byte
-            message += struct.pack(
-                "!HH", qtype, qclass
-            )  # QTYPE and QCLASS are both 2 bytes
+            message += qtype.to_bytes(2, byteorder='big')  # QTYPE is 2 bytes
         print("final sent message", message)
         return message
 
@@ -99,9 +97,11 @@ class DNSResponse:
         questions = []
         for _ in range(header.num_questions):
             name = cls.decode_name(reader)
-            data = reader.read(4)
-            type_, class_ = struct.unpack("!HH", data)
-            questions.append(DNSQuestion(name, type_, class_))
+            data = reader.read(2)
+            type_ = struct.unpack("!H", data) 
+            # int.from_bytes(data, byteorder='big')
+
+            questions.append(DNSQuestion(name, type_))
         print("questions", questions)
 
         # Parse the answers
@@ -132,19 +132,21 @@ class DNSResponse:
             if length == 0:
                 break
             elif length & 0b11000000 == 0b11000000:
-                pointer = struct.unpack("!H", bytes([length & 0b00111111]) + reader.read(1))[0]
+                pointer = struct.unpack(
+                    "!H", bytes([length & 0b00111111]) + reader.read(1)
+                )[0]
                 saved_position = reader.tell()
                 reader.seek(pointer)
                 parts.append(cls.decode_name(reader))
                 reader.seek(saved_position)
                 break
             else:
-                parts.append(reader.read(length).decode('ascii'))
+                parts.append(reader.read(length).decode("ascii"))
         return ".".join(parts) if parts else ""
 
     @staticmethod
     def parse_record(reader: BytesIO) -> DNSRecord:
         name = DNSResponse.decode_name(reader)
-        type_, class_, ttl, data_len = struct.unpack("!HHIH", reader.read(10))
+        type_, data_len = struct.unpack("!HH", reader.read(10))
         data = reader.read(data_len)
         return DNSRecord(name, type_, data)

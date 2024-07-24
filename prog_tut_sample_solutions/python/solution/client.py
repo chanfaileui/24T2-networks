@@ -97,14 +97,17 @@ def open_account(server_port: int, account: str, password: str) -> None:
         account (str): Name of the account to open.
         password (str): Password for the account.
     """
-    # The bank doesn't store plaintext passwords, so hash the password before 
+    # Bank doesn't store plaintext passwords, so hash the password before 
     # sending it to the server.
     password_hash = hashlib.sha1(password.encode()).hexdigest()
 
     # TODO: Construct a request to open an account, create a UDP socket, encode 
     #   the request and send it to the `server_port` of the loopback interface.
     #   Then wait to receive the response, decode and print it.
-
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.sendto(f'open\n{account}\n{password_hash}'.encode(), ('localhost', server_port))
+        response, _ = sock.recvfrom(1024)
+        print(response.decode())
 
 def check_balance(server_port: int, account: str, password: str) -> None:
     """Contacts the server to check the balance of the account with the provided
@@ -115,7 +118,10 @@ def check_balance(server_port: int, account: str, password: str) -> None:
     # TODO: Construct a request to check an account balance, create a UDP socket,  
     #   encode the request and send it to the `server_port` of the loopback 
     #   interface. Then wait to receive the response, decode and print it.
-
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.sendto(f'balance\n{account}\n{password_hash}'.encode(), ('localhost', server_port))
+        response, _ = sock.recvfrom(1024)
+        print(response.decode())
 
 def transfer_funds(server_port: int, from_account: str, from_password: str, to_account: str, amount: float) -> None:
     """Contacts the server to transfer funds from one account to another account."""
@@ -124,7 +130,10 @@ def transfer_funds(server_port: int, from_account: str, from_password: str, to_a
     # TODO: Construct a request to transfer funds, create a UDP socket, encode 
     #   the request and send it to the `server_port` of the loopback interface.
     #   Then wait to receive the response, decode and print it.
-    
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.sendto(f'transfer\n{from_account}\n{password_hash}\n{to_account}\n{amount}'.encode(), ('localhost', server_port))
+        response, _ = sock.recvfrom(1024)
+        print(response.decode())
 
 def crack_account(server_port: int, account: str, wordlist: str) -> None:
     """Cracks the password of the account using a wordlist file."""
@@ -136,8 +145,26 @@ def crack_account(server_port: int, account: str, wordlist: str) -> None:
         #   with the hashed password, encode the request and send it to the
         #   server.  Then wait to receive the response, decode it, and check if 
         #   the request was successful.  If so, break the loop having found the
-        #   password. 
-        pass # Remove this line when implementing the above.
+        #   password.
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            for line in f:
+                password = line.strip()
+                password_hash = hashlib.sha1(password.encode()).hexdigest()
+
+                # We use carriage return to overwrite the previous password
+                # attempt on the terminal.
+                display = f'Password: {password}'
+                print(display, end='\r')
+
+                sock.sendto(f'balance\n{account}\n{password_hash}'.encode(), ('localhost', server_port))
+                response, _ = sock.recvfrom(1024)
+
+                if response.decode() != 'not authorised':
+                    print('\nBalance:', response.decode())
+                    break
+
+                # Clear the previous password attempt from the terminal.
+                print(' ' * len(display), end='\r', flush=True)
 
 if __name__ == '__main__':
     main()

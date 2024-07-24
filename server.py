@@ -18,6 +18,7 @@
 """
 # here are the libs you may find it useful:
 from io import BytesIO
+from pathlib import Path
 import threading
 import datetime, time  # to calculate the time delta of packet transmission
 import logging, sys  # to write the log
@@ -46,9 +47,13 @@ from classes import (
 
 MASTER_FILE = "sample_master.txt"
 
+
 class DNSCache:
     def __init__(self):
         self.cache = {}
+
+    def get_cache(self):
+        return self.cache
 
     def add_record(self, qname, qtype, record):
         if qname not in self.cache:
@@ -59,6 +64,12 @@ class DNSCache:
 
     def get_records(self, qname, qtype):
         return self.cache.get(qname, {}).get(qtype, [])
+
+    def print(self):
+        for qname, qtypes in self.cache.items():
+            for qtype, records in qtypes.items():
+                for record in records:
+                    print(qname, qtype, record)
 
 
 class Server:
@@ -83,12 +94,21 @@ class Server:
         self.cache = DNSCache()
         self.load_records(MASTER_FILE)  # You need to implement this method
 
-    def load_records(self, filename):
+    def load_records(self, filename: str):
         # Implement loading records from the master file into self.cache
-        with open(filename, "r") as file:
-            file.read()
-            print(f'loading records umu umu from {filename}')
-        pass
+        records = {}
+        filepath = Path(filename)
+
+        if not filepath.exists():
+            sys.exit(f"Error: {filename} does not exist.")
+
+        with open(filename, "r") as f:
+            for line in f:
+                qname, qtype, record = line.split()
+                self.cache.add_record(qname, qtype, record)
+
+        logging.info(f"Loaded {len(self.cache.get_cache())} records from {filename}")
+        # print(self.cache.get_cache())
 
     def run(self) -> None:
         logging.info(
@@ -96,18 +116,22 @@ class Server:
         )
         while True:
             try:
-                incoming_message, client_address = self.server_socket.recvfrom(BUFFERSIZE)
-                thread = threading.Thread(target=self.handle_query, args=(incoming_message, client_address))
+                incoming_message, client_address = self.server_socket.recvfrom(
+                    BUFFERSIZE
+                )
+                thread = threading.Thread(
+                    target=self.handle_query, args=(incoming_message, client_address)
+                )
                 thread.start()
             except Exception as e:
                 logging.error(f"Error in main loop: {e}")
-    
+
     def handle_query(self, incoming_message, client_address) -> None:
         """
         This function contain the main logic of the server
         """
         # while True:
-            # try to receive any incoming message from the sender
+        # try to receive any incoming message from the sender
         try:
             logging.debug(
                 f"Get a new message: {incoming_message} from {client_address}"
@@ -125,14 +149,12 @@ class Server:
             questions = []
             for _ in range(qdcount):
                 qname, offset = self.decode_qname(incoming_message, offset)
-                qtype, qclass = struct.unpack(
-                    "!HH", incoming_message[offset : offset + 4]
-                )  # 2 bytes for QTYPE, 2 bytes for QCLASS
-                offset += 4
-                questions.append((qname, qtype, qclass))
-                logging.debug(
-                    f"Question: {qname}, QTYPE: {qtype}, QCLASS: {qclass}"
-                )
+                qtype = int.from_bytes(
+                    incoming_message[offset : offset + 2], byteorder="big"
+                )  # 2 bytes for QTYPE
+                offset += 2
+                questions.append((qname, qtype))
+                logging.debug(f"Question: {qname}, QTYPE: {qtype}")
 
             # answers = []
             # for _ in range(ancount):
@@ -144,16 +166,13 @@ class Server:
             #     answers.append((name, rtype, rclass, ttl, rdlength, rdata))
             #     logging.debug(f'Answer: {name}, TYPE: {rtype}, CLASS: {rclass}, TTL: {ttl}, RDLENGTH: {rdlength}, RDATA: {rdata}')
 
-
         except Exception as e:
             logging.error(f"Error handling query: {e}")
 
         logging.debug(
             f"client{client_address} send a message: len= {len(incoming_message.decode('utf-8'))}"
         )
-        reply_header = DNSHeader(
-            qid=qid, flags=FLAG_RESPONSE, num_questions=qdcount
-        )
+        reply_header = DNSHeader(qid=qid, flags=FLAG_RESPONSE, num_questions=qdcount)
         reply_message = DNSResponse(
             header=reply_header,
             question=questions,
@@ -171,7 +190,7 @@ class Server:
     def find_closest_nameservers(self, qname):
         # Implement logic to find the closest ancestor zone with known name servers
         pass
-    
+
     @staticmethod
     def decode_qname(message, offset):
         # print(message[offset:])
@@ -192,8 +211,10 @@ if __name__ == "__main__":
         # filename="server_log.txt",
         stream=sys.stderr,
         level=logging.DEBUG,
-        format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        # format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
+        # datefmt="%Y-%m-%d %H:%M:%S",
+        format="%(asctime)s.%(msecs)03d [%(threadName)s] %(levelname)-8s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     if len(sys.argv) != 2:

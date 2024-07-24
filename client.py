@@ -39,8 +39,9 @@ from classes import (
     TYPE_A,
     TYPE_CNAME,
     TYPE_NS,
-    TYPE_INVALID
+    TYPE_INVALID,
 )
+
 
 class Client:
     def __init__(
@@ -114,7 +115,9 @@ class Client:
         while self._is_active:
             try:
                 self.client_socket.settimeout(self.timeout)
-                incoming_message, sender_address = self.client_socket.recvfrom(BUFFERSIZE)
+                incoming_message, sender_address = self.client_socket.recvfrom(
+                    BUFFERSIZE
+                )
                 client_port = sender_address[1]
                 logging.info(f"received reply from receiver:, {incoming_message}")
                 # decoded_message = incoming_message.decode("utf-8")
@@ -177,8 +180,8 @@ class Client:
         #     print("\nAdditional Section:")
         #     for additional in additionals:
         #         self.print_record(additional)
-        
-        #LOGGING
+
+        # LOGGING
         # logging.info(f"{client_port}: {dns_response.header.qid} {dns_response.question[0].qname} {dns_response.question[0].qtype} (delay: {delay:.2f}s)")
         # logging.info(f"Header: {dns_response.header}")
         # logging.info(f"Questions: {dns_response.question}")
@@ -208,19 +211,18 @@ class Client:
     def parse_record(self, reader):
         name = self.decode_name(reader)
         data = reader.read(10)
-        type_, class_, ttl, data_len = struct.unpack("!HHIH", data)
+        type_, data_len = struct.unpack("!HH", data)
         data = reader.read(data_len)
-        return DNSRecord(name, type_, class_, ttl, data)
+        return DNSRecord(name, type_, data)
 
     def parse_question(self, reader):
         name = self.decode_name(reader)
         data = reader.read(4)
-        type_, class_ = struct.unpack("!HH", data)
-        return DNSQuestion(name, type_, class_)
+        type_ = struct.unpack("!HH", data)
+        return DNSQuestion(name, type_)
 
     def parse_header(self, reader):
         items = struct.unpack("!HHHHHH", reader.read(12))
-        # see "a note on BytesIO" for an explanation of `reader` here
         return DNSHeader(*items)
 
     def run(self):
@@ -260,9 +262,7 @@ class Client:
             )
             # + b"\x00"
         )
-        return qname_bytes + struct.pack(
-            "!HH", question.qtype, 1
-        )  # 1 here means "IN" (the internet)
+        return qname_bytes + question.qtype.to_bytes(2, byteorder='big')
 
 
 if __name__ == "__main__":
@@ -271,8 +271,8 @@ if __name__ == "__main__":
         # filename="client_log.txt",
         stream=sys.stderr,
         level=logging.DEBUG,
-        format="%(asctime)s,%(msecs)03d [%(threadName)s] %(levelname)-8s %(message)s",
-        datefmt="%Y-%m-%d:%H:%M:%S",
+        format="%(asctime)s.%(msecs)03d [%(threadName)s] %(levelname)-8s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     if len(sys.argv) != 5:
