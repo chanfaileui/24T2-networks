@@ -18,6 +18,7 @@
 """
 # here are the libs you may find it useful:
 from io import BytesIO
+import threading
 import datetime, time  # to calculate the time delta of packet transmission
 import logging, sys  # to write the log
 import random
@@ -31,15 +32,15 @@ import struct
 from classes import (
     DNSHeader,
     DNSQuestion,
-    DNSRecord,
+    # DNSRecord,
     DNSResponse,
     BUFFERSIZE,
     FLAG_QUERY,
-    FLAG_RESPONSE,
     TYPE_A,
     TYPE_CNAME,
     TYPE_NS,
     TYPE_INVALID,
+    get_qtype
 )
 
 
@@ -70,24 +71,21 @@ class Client:
         self.client_socket = socket.socket(
             family=socket.AF_INET, type=socket.SOCK_DGRAM
         )
-        logging.debug(f"The client is using the address {self.client_socket}")
 
         #  (Optional) start the listening sub-thread first
         self._is_active = True  # for the multi-threading
+        self.response_received_event = threading.Event()
         self.listen_thread = Thread(target=self.listen)
         self.listen_thread.start()
-
-        # todo add codes here
-        pass
 
     def create_and_send_query(self):
         """
         Construct and send the DNS query to the server.
 
         """
-        qid = random.randint(1, 2 ^ 16 - 1)
+        qid = random.randint(1, 2**16 - 1)
         header = DNSHeader(qid=qid, flags=FLAG_QUERY, num_questions=1)
-        header_bytes = self.header_to_bytes(header)
+        header_bytes = header.to_bytes()
 
         # Determine the query type based on the input
         qtype = (
@@ -100,13 +98,13 @@ class Client:
             )
         )
         question = DNSQuestion(qname=self.qname, qtype=qtype)
-        question_bytes = self.question_to_bytes(question)
+        question_bytes = question.to_bytes()
 
         content = header_bytes + question_bytes
 
-        logging.debug(f"ts: {datetime.datetime.timestamp(datetime.datetime.now())}")
+        # logging.debug(f"ts: {datetime.datetime.timestamp(datetime.datetime.now())}")
         self.client_socket.sendto(content, self.server_address)
-        logging.debug(f"Sent DNS query for {self.qname} ({self.qtype})")
+        # logging.debug(f"Sent DNS query for {self.qname} ({self.qtype})")
 
     def listen(self):
         """(Multithread is used)listen the response from receiver"""
@@ -119,14 +117,11 @@ class Client:
                     BUFFERSIZE
                 )
                 client_port = sender_address[1]
-                logging.info(f"received reply from receiver:, {incoming_message}")
+                # logging.info(f"received reply from receiver:, {incoming_message}")
                 # decoded_message = incoming_message.decode("utf-8")
                 # logging.info(f"decoded reply from receiver:, {decoded_message}")
                 self.handle_response(incoming_message, client_port)
-                # logging.info(
-                #     f"received reply from receiver:, {incoming_message.decode('utf-8')}"
-                # )
-                # self.handle_response(incoming_message)
+                self.response_received_event.set()
                 self._is_active = False  # Stop listening after receiving the response
             except socket.timeout:
                 logging.error("Request timed out")
@@ -139,7 +134,6 @@ class Client:
                     raise e
 
         while self._is_active:
-            # todo add socket
             incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
 
     def handle_response(self, response, client_port):
@@ -148,55 +142,56 @@ class Client:
 
         :param response: The response packet from the server.
         """
-        print("response received:", response)
-        logging.info(f"{client_port}")
-        # dns_response = DNSResponse.from_bytes(response)
-        # print(dns_response)
-        # reader = BytesIO(response)
-        # header = self.parse_header(reader)
-        # questions = [self.parse_question(reader) for _ in range(header.num_questions)]
-        # answers = [self.parse_record(reader) for _ in range(header.num_answers)]
-        # authorities = [self.parse_record(reader) for _ in range(header.num_authorities)]
-        # additionals = [self.parse_record(reader) for _ in range(header.num_additionals)]
+        # print("response received:", response)
+        dns_response = DNSResponse.from_bytes(response)
+        # print('dns reponse', dns_response)
 
-        # # Print the response in the required format
-        # print(f"QID: {header.qid}")
+        header = dns_response.header
+        questions = dns_response.question
+        answers = dns_response.answer
+        authorities = dns_response.authority
+        additionals = dns_response.additional
 
-        # print("\nQuestion Section:")
-        # for question in questions:
-        #     print(f"QNAME: {question.qname}, QTYPE: {question.qtype}")
+        # Print the response in the required format
+        print(f"QID: {header.qid}")
 
-        # if answers:
-        #     print("\nAnswer Section:")
-        #     for answer in answers:
-        #         self.print_record(answer)
+        print("\nQUESTION SECTION:")
+        for question in questions:
+            print(f"QNAME: {question.qname}, QTYPE: {get_qtype(question.qtype)}")
 
-        # if authorities:
-        #     print("\nAuthority Section:")
-        #     for authority in authorities:
-        #         self.print_record(authority)
+        if answers:
+            print("\nANSWER SECTION:")
+            for answer in answers:
+                self.print_record(answer)
 
-        # if additionals:
-        #     print("\nAdditional Section:")
-        #     for additional in additionals:
-        #         self.print_record(additional)
+        if authorities:
+            print("\nAUTHORITY SECTION:")
+            for authority in authorities:
+                self.print_record(authority)
 
-        # LOGGING
-        # logging.info(f"{client_port}: {dns_response.header.qid} {dns_response.question[0].qname} {dns_response.question[0].qtype} (delay: {delay:.2f}s)")
-        # logging.info(f"Header: {dns_response.header}")
-        # logging.info(f"Questions: {dns_response.question}")
-        # logging.info(f"Answers: {dns_response.answer}")
-        # logging.info(f"Authorities: {dns_response.authority}")
-        # logging.info(f"Additionals: {dns_response.additional}")
+        if additionals:
+            print("\nADDITIONAL SECTION:")
+            for additional in additionals:
+                self.print_record(additional)
+
+        return dns_response
+
+    def print_record(self, record):
+        print(f"NAME: {record.name}, TYPE: {get_qtype(record.type_)}, DATA: {record.data}")
 
     def decode_name(self, reader):
         parts = []
+
+        length_bytes = reader.read(1)
+        if not length_bytes:  # Check if no bytes were read
+            raise IndexError("No more bytes to read.")
+
         while (length := reader.read(1)[0]) != 0:
             if length & 0b1100_0000:
                 parts.append(self.decode_compressed_name(length, reader))
                 break
             else:
-                parts.append(reader.read(length))
+                parts.append(reader.read(length).decode("utf-8"))
         return ".".join(parts)
 
     def decode_compressed_name(self, length, reader):
@@ -208,66 +203,18 @@ class Client:
         reader.seek(current_pos)
         return result
 
-    def parse_record(self, reader):
-        name = self.decode_name(reader)
-        data = reader.read(10)
-        type_, data_len = struct.unpack("!HH", data)
-        data = reader.read(data_len)
-        return DNSRecord(name, type_, data)
-
-    def parse_question(self, reader):
-        name = self.decode_name(reader)
-        data = reader.read(4)
-        type_ = struct.unpack("!HH", data)[0]
-        return DNSQuestion(name, type_)
-
-    def parse_header(self, reader):
-        items = struct.unpack("!HHHHHH", reader.read(12))
-        return DNSHeader(*items)
-
     def run(self):
         """
         This function contain the main logic of the receiver
         """
         self.create_and_send_query()
 
-        time.sleep(self.timeout + 1)
+        self.response_received_event.wait(self.timeout + 1)
         self._is_active = False  # close the sub-thread
 
         self.client_socket.close()
         logging.info("Socket closed.")
         self.listen_thread.join()
-
-    # with reference to https://implement-dns.wizardzines.com/book/part_1
-    @staticmethod
-    def header_to_bytes(header: DNSHeader) -> bytes:
-        fields = dataclasses.astuple(header)
-        return struct.pack(
-            "!HHHHHH", *fields
-        )  # there are 4 `H`s because there are 4 fields
-
-    @staticmethod
-    def question_to_bytes(question: DNSQuestion) -> bytes:
-        """
-        Convert the DNSQuestion dataclass to bytes.
-
-        :param question: DNSQuestion dataclass instance
-        :return: Byte representation of the DNS question
-        """
-        qname_parts = question.qname.split(".")
-        
-        # Remove the last empty part if qname ends with a dot
-        if qname_parts[-1] == '':
-            qname_parts = qname_parts[:-1]
-
-        qname_bytes = (
-            b"".join(
-                (len(part).to_bytes(1, "big") + part.encode("ascii"))
-                for part in qname_parts
-            )
-            + b"\x00"
-        )
-        return qname_bytes + question.qtype.to_bytes(2, byteorder='big')
 
 
 if __name__ == "__main__":
@@ -287,4 +234,7 @@ if __name__ == "__main__":
         exit(0)
 
     client = Client(int(sys.argv[1]), sys.argv[2], sys.argv[3], int(sys.argv[4]))
-    client.run()
+    try:
+        client.run()
+    except KeyboardInterrupt:
+        print("\nExiting...")

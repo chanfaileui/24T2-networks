@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 # according to https://datatracker.ietf.org/doc/html/rfc1035#section-3.2.2
 from dataclasses import dataclass
 import dataclasses
@@ -17,6 +19,17 @@ FLAG_RESPONSE = 1
 BUFFERSIZE = 4096
 
 
+def get_qtype(qtype):
+    if qtype == TYPE_A:
+        return "A"
+    elif qtype == TYPE_CNAME:
+        return "CNAME"
+    elif qtype == TYPE_NS:
+        return "NS"
+    else:
+        return "INVALID"
+
+
 # with reference to https://implement-dns.wizardzines.com/book/part_1
 @dataclass
 class DNSHeader:
@@ -27,6 +40,7 @@ class DNSHeader:
     num_authorities: int = 0
     num_additionals: int = 0
 
+    # with reference to https://implement-dns.wizardzines.com/book/part_1
     def to_bytes(self) -> bytes:
         fields = dataclasses.astuple(self)
         return struct.pack("!HHHHHH", *fields)
@@ -45,24 +59,45 @@ class DNSQuestion:
 
     def to_bytes(self) -> bytes:
         qname_parts = self.qname.split(".")
+
+        # Remove the last empty part if qname ends with a dot
+        if qname_parts[-1] == "":
+            qname_parts = qname_parts[:-1]
+
         qname_bytes = (
             b"".join(
                 (len(part).to_bytes(1, "big") + part.encode("ascii"))
                 for part in qname_parts
             )
-            + b"\0"
+            + b"\x00"
         )
-        return qname_bytes + struct.pack("!H", self.qtype)
+        return qname_bytes + self.qtype.to_bytes(2, byteorder="big")
+
+    # def to_bytes(self) -> bytes:
+    #     qname_parts = self.qname.split(".")
+    #     qname_bytes = (
+    #         b"".join(
+    #             (len(part).to_bytes(1, "big") + part.encode("ascii"))
+    #             for part in qname_parts
+    #         )
+    #         + b"\0"
+    #     )
+    #     return qname_bytes + struct.pack("!H", self.qtype)
 
 
 @dataclass
 class DNSRecord:
     name: str  # domain name
     type_: int  #  type of the resource record
-    data: bytes  # type-dependent data which describes the resource
+    data: str  # type-dependent data which describes the resource
 
     def to_bytes(self) -> bytes:
         name_parts = self.name.split(".")
+
+        # Remove the last empty part if qname ends with a dot
+        if name_parts[-1] == "":
+            name_parts = name_parts[:-1]
+
         name_bytes = (
             b"".join(
                 (len(part).to_bytes(1, "big") + part.encode("ascii"))
@@ -70,11 +105,13 @@ class DNSRecord:
             )
             + b"\0"
         )
+
+        data_bytes = self.data.encode("ascii")
         return (
             name_bytes
             + self.type_.to_bytes(2, byteorder="big")
             + struct.pack("!H", len(self.data))
-            + self.data
+            + data_bytes
         )
 
 
@@ -96,7 +133,6 @@ class DNSResponse:
             message += auth.to_bytes()
         for add in self.additional:
             message += add.to_bytes()
-        print("final sent message", message)
         return message
 
     # def to_bytes(self):
@@ -163,5 +199,5 @@ class DNSResponse:
     def parse_record(reader: BytesIO) -> DNSRecord:
         name = DNSResponse.decode_name(reader)
         type_, data_len = struct.unpack("!HH", reader.read(4))
-        data = reader.read(data_len)
+        data = reader.read(data_len).decode("ascii")
         return DNSRecord(name, type_, data)

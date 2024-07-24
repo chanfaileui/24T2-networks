@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-# testing
+
 """
     Sample code for server
     Python 3
@@ -37,10 +37,8 @@ from classes import (
     DNSRecord,
     DNSResponse,
     BUFFERSIZE,
-    TYPE_A,
-    TYPE_CNAME,
-    TYPE_NS,
     FLAG_RESPONSE,
+    get_qtype
 )
 
 MASTER_FILE = "sample_master.txt"
@@ -161,7 +159,7 @@ class Server:
 
                 sent_time = datetime.datetime.now()
                 print(
-                    f"{sent_time.strftime('%Y-%m-%d:%H:%M:%S')},snd,{client_address[1]}:{header.qid},{question.qname},{self.get_qtype(question.qtype)}"
+                    f"{sent_time.strftime('%Y-%m-%d:%H:%M:%S')},snd,{client_address[1]}:{header.qid},{question.qname},{get_qtype(question.qtype)}"
                 )
 
         except Exception as e:
@@ -173,25 +171,14 @@ class Server:
         for _ in range(qdcount):
             qname, offset = self.decode_qname(message, offset)
             qtype = struct.unpack("!H", message[offset : offset + 2])[0]
-            offset += 2 # 2 bytes for QTYPE
+            offset += 2  # 2 bytes for QTYPE
             questions.append(DNSQuestion(qname, qtype))
             logging.debug(f"Question: {qname}, QTYPE: {qtype}")
         return questions
 
-    @staticmethod
-    def get_qtype(qtype):
-        if qtype == TYPE_A:
-            return 'A'
-        elif qtype == TYPE_CNAME:
-            return 'CNAME'
-        elif qtype == TYPE_NS:
-            return 'NS'
-        else:
-            return 'INVALID'
-    
     def process_query(self, qid: int, question: DNSQuestion) -> bytes:
         qname = question.qname
-        qtype = self.get_qtype(question.qtype)
+        qtype = get_qtype(question.qtype)
 
         if qtype == "INVALID":
             raise ValueError("Invalid qtype")
@@ -199,7 +186,11 @@ class Server:
         print("qname:", qname, "qtype: ", qtype)
         answers_str = self.cache.get_records(question.qname, qtype)
         answers = [
-            DNSRecord(name=question.qname, type_=question.qtype, data=self.encode_rdata(question.qtype, answer))
+            DNSRecord(
+                name=question.qname,
+                type_=question.qtype,
+                data=self.encode_rdata(question.qtype, answer),
+            )
             for answer in answers_str
         ]
         print("answers", answers)
@@ -210,7 +201,7 @@ class Server:
                 answers = closest_nameservers
             else:
                 return b""
-            
+
         authority = []
         additional = []
 
@@ -248,17 +239,17 @@ class Server:
                 break
             labels.append(message[offset + 1 : offset + 1 + length].decode("ascii"))
             offset += 1 + length
-        
+
         qname = ".".join(labels) + "."  # Re-add the trailing dot
         return qname, offset
-    
-    @staticmethod
-    def encode_rdata(qtype, data):
-        if qtype == TYPE_A:
-            return socket.inet_aton(data)  # Convert IP address to 4-byte format
-        else:
-            return data.encode("ascii")  # For other types, return ASCII-encoded bytes
 
+    @staticmethod
+    def encode_rdata(qtype: int, data: str):
+        # if qtype == TYPE_A:
+        #     return socket.inet_aton(data)  # Convert IP address to 4-byte format
+        # else:
+        # return data.encode("ascii")  # For other types, return ASCII-encoded bytes
+        return data
 
 
 if __name__ == "__main__":
@@ -276,6 +267,9 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("\n===== Error usage, python3 server.py server_port ======\n")
         exit(0)
-    
+
     server = Server(int(sys.argv[1]))
-    server.run()
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        print('\nExiting...')
