@@ -18,6 +18,7 @@
 """
 # here are the libs you may find it useful:
 from io import BytesIO
+import threading
 import datetime, time  # to calculate the time delta of packet transmission
 import logging, sys  # to write the log
 import socket  # Core lib, to send packet via UDP socket
@@ -43,6 +44,7 @@ from classes import (
     FLAG_RESPONSE,
 )
 
+MASTER_FILE = "sample_master.txt"
 
 class DNSCache:
     def __init__(self):
@@ -72,83 +74,104 @@ class Server:
 
         # init the UDP socket
         # define socket for the server side and bind address
-        logging.debug(
-            f"The sender is using the address {self.server_address} to receive message!"
-        )
         self.server_socket = socket.socket(
             family=socket.AF_INET, type=socket.SOCK_DGRAM
         )
         self.server_socket.bind(self.server_address)
 
+        # creating DNS cache
+        self.cache = DNSCache()
+        self.load_records(MASTER_FILE)  # You need to implement this method
+
+    def load_records(self, filename):
+        # Implement loading records from the master file into self.cache
+        with open(filename, "r") as file:
+            file.read()
+            print(f'loading records umu umu from {filename}')
+        pass
+
     def run(self) -> None:
+        logging.info(
+            f"The sender is using the address {self.server_address} to receive messages!"
+        )
+        while True:
+            try:
+                incoming_message, client_address = self.server_socket.recvfrom(BUFFERSIZE)
+                thread = threading.Thread(target=self.handle_query, args=(incoming_message, client_address))
+                thread.start()
+            except Exception as e:
+                logging.error(f"Error in main loop: {e}")
+    
+    def handle_query(self, incoming_message, client_address) -> None:
         """
         This function contain the main logic of the server
         """
-        while True:
+        # while True:
             # try to receive any incoming message from the sender
-            try:
-                incoming_message, sender_address = self.server_socket.recvfrom(
-                    BUFFERSIZE
-                )
-                logging.debug(
-                    f"Get a new message: {incoming_message} from {sender_address}"
-                )
-                header = incoming_message[:12]  # 12 bytes header
-                (qid, flags, qdcount, ancount, nscount, arcount) = struct.unpack(
-                    "!HHHHHH", header
-                )
-
-                logging.debug(
-                    f"ID: {qid}, Flags: {flags}, QDCOUNT: {qdcount}, ANCOUNT: {ancount}, NSCOUNT: {nscount}, ARCOUNT: {arcount}"
-                )
-
-                offset = 12
-                questions = []
-                for _ in range(qdcount):
-                    qname, offset = self.decode_qname(incoming_message, offset)
-                    qtype, qclass = struct.unpack(
-                        "!HH", incoming_message[offset : offset + 4]
-                    )  # 2 bytes for QTYPE, 2 bytes for QCLASS
-                    offset += 4
-                    questions.append((qname, qtype, qclass))
-                    logging.debug(
-                        f"Question: {qname}, QTYPE: {qtype}, QCLASS: {qclass}"
-                    )
-
-                # answers = []
-                # for _ in range(ancount):
-                #     name, offset = self.decode_qname(incoming_message, offset)
-                #     rtype, rclass, ttl, rdlength = struct.unpack('!HHIH', incoming_message[offset:offset + 10])
-                #     offset += 10
-                #     rdata = incoming_message[offset:offset + rdlength]
-                #     offset += rdlength
-                #     answers.append((name, rtype, rclass, ttl, rdlength, rdata))
-                #     logging.debug(f'Answer: {name}, TYPE: {rtype}, CLASS: {rclass}, TTL: {ttl}, RDLENGTH: {rdlength}, RDATA: {rdata}')
-
-            except ConnectionResetError:
-                continue
+        try:
+            logging.debug(
+                f"Get a new message: {incoming_message} from {client_address}"
+            )
+            header = incoming_message[:12]  # 12 bytes header
+            (qid, flags, qdcount, ancount, nscount, arcount) = struct.unpack(
+                "!HHHHHH", header
+            )
 
             logging.debug(
-                f"client{sender_address} send a message: len= {len(incoming_message.decode('utf-8'))}"
-            )
-            # with open(self.filename, "a+") as file:
-            #     file.write(incoming_message.decode())
-
-            # reply "ACK" once receive any message from sender
-            reply_header = DNSHeader(
-                qid=qid, flags=FLAG_RESPONSE, num_questions=qdcount
-            )
-            reply_message = DNSResponse(
-                header=reply_header,
-                question=questions,
-                answer=[],
-                authority=[],
-                additional=[],
+                f"ID: {qid}, Flags: {flags}, QDCOUNT: {qdcount}, ANCOUNT: {ancount}, NSCOUNT: {nscount}, ARCOUNT: {arcount}"
             )
 
-            # print("reply_message.to_bytes()", reply_message.to_bytes())
-            self.server_socket.sendto(reply_message.to_bytes(), sender_address)
+            offset = 12
+            questions = []
+            for _ in range(qdcount):
+                qname, offset = self.decode_qname(incoming_message, offset)
+                qtype, qclass = struct.unpack(
+                    "!HH", incoming_message[offset : offset + 4]
+                )  # 2 bytes for QTYPE, 2 bytes for QCLASS
+                offset += 4
+                questions.append((qname, qtype, qclass))
+                logging.debug(
+                    f"Question: {qname}, QTYPE: {qtype}, QCLASS: {qclass}"
+                )
 
+            # answers = []
+            # for _ in range(ancount):
+            #     name, offset = self.decode_qname(incoming_message, offset)
+            #     rtype, rclass, ttl, rdlength = struct.unpack('!HHIH', incoming_message[offset:offset + 10])
+            #     offset += 10
+            #     rdata = incoming_message[offset:offset + rdlength]
+            #     offset += rdlength
+            #     answers.append((name, rtype, rclass, ttl, rdlength, rdata))
+            #     logging.debug(f'Answer: {name}, TYPE: {rtype}, CLASS: {rclass}, TTL: {ttl}, RDLENGTH: {rdlength}, RDATA: {rdata}')
+
+
+        except Exception as e:
+            logging.error(f"Error handling query: {e}")
+
+        logging.debug(
+            f"client{client_address} send a message: len= {len(incoming_message.decode('utf-8'))}"
+        )
+        reply_header = DNSHeader(
+            qid=qid, flags=FLAG_RESPONSE, num_questions=qdcount
+        )
+        reply_message = DNSResponse(
+            header=reply_header,
+            question=questions,
+            answer=[],
+            authority=[],
+            additional=[],
+        )
+
+        # print("reply_message.to_bytes()", reply_message.to_bytes())
+        self.server_socket.sendto(reply_message.to_bytes(), client_address)
+
+    def process_query(self, qid, question):
+        pass
+
+    def find_closest_nameservers(self, qname):
+        # Implement logic to find the closest ancestor zone with known name servers
+        pass
+    
     @staticmethod
     def decode_qname(message, offset):
         # print(message[offset:])
@@ -169,8 +192,8 @@ if __name__ == "__main__":
         # filename="server_log.txt",
         stream=sys.stderr,
         level=logging.DEBUG,
-        format="%(asctime)s,%(msecs)03d %(levelname)-8s %(message)s",
-        datefmt="%Y-%m-%d:%H:%M:%S",
+        format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
 
     if len(sys.argv) != 2:

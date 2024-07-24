@@ -114,11 +114,12 @@ class Client:
         while self._is_active:
             try:
                 self.client_socket.settimeout(self.timeout)
-                incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
+                incoming_message, sender_address = self.client_socket.recvfrom(BUFFERSIZE)
+                client_port = sender_address[1]
                 logging.info(f"received reply from receiver:, {incoming_message}")
                 # decoded_message = incoming_message.decode("utf-8")
                 # logging.info(f"decoded reply from receiver:, {decoded_message}")
-                self.handle_response(incoming_message)
+                self.handle_response(incoming_message, client_port)
                 # logging.info(
                 #     f"received reply from receiver:, {incoming_message.decode('utf-8')}"
                 # )
@@ -138,15 +139,16 @@ class Client:
             # todo add socket
             incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
 
-    def handle_response(self, response):
+    def handle_response(self, response, client_port):
         """
         Process the DNS response from the server.
 
         :param response: The response packet from the server.
         """
         print("response received:", response)
-        dns_response = DNSResponse.from_bytes(response)
-        print(dns_response)
+        logging.info(f"{client_port}")
+        # dns_response = DNSResponse.from_bytes(response)
+        # print(dns_response)
         # reader = BytesIO(response)
         # header = self.parse_header(reader)
         # questions = [self.parse_question(reader) for _ in range(header.num_questions)]
@@ -175,6 +177,14 @@ class Client:
         #     print("\nAdditional Section:")
         #     for additional in additionals:
         #         self.print_record(additional)
+        
+        #LOGGING
+        # logging.info(f"{client_port}: {dns_response.header.qid} {dns_response.question[0].qname} {dns_response.question[0].qtype} (delay: {delay:.2f}s)")
+        # logging.info(f"Header: {dns_response.header}")
+        # logging.info(f"Questions: {dns_response.question}")
+        # logging.info(f"Answers: {dns_response.answer}")
+        # logging.info(f"Authorities: {dns_response.authority}")
+        # logging.info(f"Additionals: {dns_response.additional}")
 
     def decode_name(self, reader):
         parts = []
