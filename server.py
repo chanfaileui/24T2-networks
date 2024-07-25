@@ -56,7 +56,7 @@ class DNSCache:
     def get_cache(self):
         return self.cache
 
-    def add_record(self, qname, qtype, record):
+    def add_record(self, qname: str, qtype: str, record: str):
         qname = qname.lower()
         if qname not in self.cache:
             self.cache[qname] = {}
@@ -64,7 +64,7 @@ class DNSCache:
             self.cache[qname][qtype] = []
         self.cache[qname][qtype].append(record)
 
-    def get_records(self, qname, qtype):
+    def get_records(self, qname: str, qtype: str) -> list:
         qname = qname.lower()
         return self.cache.get(qname, {}).get(qtype, [])
 
@@ -115,9 +115,7 @@ class Server:
         # logging.info(
         #     f"The sender is using the address {self.server_address} to receive messages!"
         # )
-        logging.info(
-            f"Receiving at {self.server_address}:"
-        )
+        logging.info(f"Receiving at {self.server_address}:")
         while True:
             try:
                 incoming_message, client_address = self.server_socket.recvfrom(
@@ -152,108 +150,148 @@ class Server:
             )
 
             questions = self.parse_questions(incoming_message, header.num_questions)
-            for question in questions:
-                # TODO: UNCOMMENT BEFORE SUBMITTING!!!
-                # delay = random.randint(0, 4)
-                # print(f"{received_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} rcv {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype):<5} (delay: {delay}s)")
+            if questions:
+                for question in questions:
+                    # TODO: UNCOMMENT BEFORE SUBMITTING!!!
+                    # delay = random.randint(0, 4)
+                    # print(f"{received_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} rcv {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype):<5} (delay: {delay}s)")
 
-                # time.sleep(delay)
+                    # time.sleep(delay)
 
-                response = self.process_query(header.qid, question)
-                self.server_socket.sendto(response, client_address)
-                
-                print('sent response', response)
+                    response = self.process_query(header.qid, question)
+                    self.server_socket.sendto(response, client_address)
 
-                sent_time = datetime.datetime.now()
-                print(f"{sent_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} snd {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype)}")
+                    print("sent response", response)
+
+                    sent_time = datetime.datetime.now()
+                    print(
+                        f"{sent_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} snd {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype)}"
+                    )
 
         except Exception as e:
             logging.error(f"Error handling query: {e}")
 
     def parse_questions(self, message, qdcount):
-        offset = 12
-        questions = []
-        for _ in range(qdcount):
-            qname, offset = self.decode_qname(message, offset)
-            qtype = struct.unpack("!H", message[offset : offset + 2])[0]
-            offset += 2  # 2 bytes for QTYPE
-            questions.append(DNSQuestion(qname, qtype))
-        return questions
+        try:
+            offset = 12
+            questions = []
+            for _ in range(qdcount):
+                qname, offset = self.decode_qname(message, offset)
+                qtype = struct.unpack("!H", message[offset : offset + 2])[0]
+                offset += 2  # 2 bytes for QTYPE
+                questions.append(DNSQuestion(qname, qtype))
+            return questions
+        except Exception as e:
+            logging.error(f"Error parsing question: {e}")
 
-    def process_query(self, qid: int, question: DNSQuestion) -> bytes:
-        qname = question.qname
-        qtype = get_qtype(question.qtype)
+    def process_query(self, qid: int, question: DNSQuestion) -> bytes | None:
+        try:
+            qname = question.qname
+            qtype = get_qtype(question.qtype)
 
-        if qtype == "INVALID":
-            raise ValueError("Invalid qtype")
+            if qtype == "INVALID":
+                raise ValueError("Invalid qtype")
 
-        print('DNS QUEstion', question)
+            answers_str = self.cache.get_records(question.qname, qtype)
+            answers = [
+                DNSRecord(
+                    name=question.qname,
+                    type_=question.qtype,
+                    data=self.encode_rdata(question.qtype, answer),
+                )
+                for answer in answers_str
+            ]
 
-        answers_str = self.cache.get_records(question.qname, qtype)
-        answers = [
-            DNSRecord(
-                name=question.qname,
-                type_=question.qtype,
-                data=self.encode_rdata(question.qtype, answer),
-            )
-            for answer in answers_str
-        ]
+            # resolve query
+            if not answers and qtype != TYPE_CNAME:
+                # check for a CNAME
+                self.resolve_query(answers, qname)
 
-        if not answers and qtype != TYPE_CNAME:
-            cname_records = self.cache.get_records(qname, "CNAME")
-            if cname_records:
-                answers = cname_records
-                qname = cname_records[0].rdata.decode('ascii')
-                found = self.cache.get_records(qname, qtype)
-                answers.extend(found)
-
-        if not answers:
-            # Handle referral
-            ns_records = self.find_closest_nameservers(qname)
-            authority = ns_records
-            additional = []
-            for ns_record in ns_records:
-                additional.extend(self.cache.get_records(ns_record.rdata.decode('ascii'), "A"))
-        else:
             authority = []
             additional = []
+            if not answers:
+                ns_records = self.find_closest_nameservers(qname)
+                authority = ns_records
+                for ns_record in ns_records:
+                    additional_record_name = self.cache.get_records(ns_record.data, "A")
+                    if additional_record_name:
+                        additional_records = [
+                            DNSRecord(name=ns_record.data, type_=TYPE_A, data=ad)
+                            for ad in additional_record_name
+                        ]
+                        additional.extend(additional_records)
 
-        authority = []
-        additional = []
+            header = DNSHeader(
+                qid=qid,
+                flags=FLAG_RESPONSE,
+                num_questions=1,
+                num_answers=len(answers),
+                num_authorities=len(authority),
+                num_additionals=len(additional),
+            )
+            response = DNSResponse(
+                header=header,
+                question=[question],
+                answer=answers,
+                authority=authority,
+                additional=additional,
+            )
 
-        header = DNSHeader(
-            qid=qid,
-            flags=FLAG_RESPONSE,
-            num_questions=1,
-            num_answers=len(answers),
-            num_authorities=len(authority),
-            num_additionals=len(additional),
-        )
-        response = DNSResponse(
-            header=header,
-            question=[question],
-            answer=answers,
-            authority=authority,
-            additional=additional,
-        )
+            return response.to_bytes()
+        except Exception as e:
+            logging.error(f"Error processing question: {e}")
 
-        return response.to_bytes()
+    # CNAME resolution
+    def resolve_query(self, answers, qname):
+        cname_records = self.cache.get_records(qname, "CNAME")
+        if cname_records:
+            cname_record = cname_records[0]
+            answers.append(DNSRecord(name=qname, type_=TYPE_CNAME, data=cname_record))
 
-    def find_closest_nameservers(self, qname):
-        labels = qname.split('.')
-        for i in range(len(labels)):
-            ancestor = '.'.join(labels[i:])
-            if ancestor == '':
-                ancestor = '.'  # Root domain
-            ns_records = self.cache.get_records(ancestor, 'NS')
-            if ns_records:
-                return [DNSRecord(
-                    name=ancestor,
-                    type_=TYPE_NS,
-                    data=ns.rdata
-                ) for ns in ns_records]
-        return []  # If no nameservers found, return an empty list
+            new_qname = cname_record
 
+            # find matching A records
+            a_results = self.cache.get_records(new_qname, "A")
+            if a_results:
+                answers.extend(
+                    [
+                        DNSRecord(
+                            name=new_qname,
+                            type_=TYPE_A,
+                            data=self.encode_rdata(TYPE_A, a),
+                        )
+                        for a in a_results
+                    ]
+                )
+                return answers
+            else:
+                self.resolve_query(answers, new_qname)
+
+        # no cname records or a records
+        return answers
+
+    def find_closest_nameservers(self, qname: str):
+        ancestor_parts = qname.split(".")
+
+        while ancestor_parts:
+            ancestor = ".".join(ancestor_parts)
+            ancestor = ancestor if ancestor else "."  # root domain
+
+            resolve_ns = self.cache.get_records(ancestor, "NS")
+            # print(self.cache.get_cache())
+            if resolve_ns:
+                ns_records = [
+                    DNSRecord(name=ancestor, type_=TYPE_NS, data=ns)
+                    for ns in resolve_ns
+                ]
+                logging.info("resolved NS")
+                print("ns_records", ns_records)
+                return ns_records
+
+            ancestor_parts = ancestor_parts[1:]
+
+        # If we've exhausted all ancestors (including root '.'), return an empty list
+        return []
 
     @staticmethod
     def decode_qname(message, offset):

@@ -162,10 +162,9 @@ class DNSResponse:
         reader = BytesIO(data)
         if len(data) < 12:
             raise ValueError(f"Data too short: expected at least 12 bytes, got {len(data)} bytes")
+        
         header = DNSHeader.parse_header(reader)
-
-        header = DNSHeader.parse_header(reader)
-
+        
         questions = []
         for _ in range(header.num_questions):
             qname = cls.decode_name(reader)
