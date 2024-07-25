@@ -58,31 +58,23 @@ class DNSQuestion:
     qtype: int  #  type of the query
 
     def to_bytes(self) -> bytes:
-        qname_parts = self.qname.split(".")
+        if self.qname == ".":
+            # Special case for the root domain
+            qname_bytes = b"\x00"
+        else:
+            qname_parts = self.qname.split(".")
+            # Remove the last empty part if qname ends with a dot
+            if qname_parts[-1] == "":
+                qname_parts = qname_parts[:-1]
 
-        # Remove the last empty part if qname ends with a dot
-        if qname_parts[-1] == "":
-            qname_parts = qname_parts[:-1]
-
-        qname_bytes = (
-            b"".join(
-                (len(part).to_bytes(1, "big") + part.encode("ascii"))
-                for part in qname_parts
+            qname_bytes = (
+                b"".join(
+                    (len(part).to_bytes(1, "big") + part.encode("ascii"))
+                    for part in qname_parts
+                )
+                + b"\x00"
             )
-            + b"\x00"
-        )
         return qname_bytes + self.qtype.to_bytes(2, byteorder="big")
-
-    # def to_bytes(self) -> bytes:
-    #     qname_parts = self.qname.split(".")
-    #     qname_bytes = (
-    #         b"".join(
-    #             (len(part).to_bytes(1, "big") + part.encode("ascii"))
-    #             for part in qname_parts
-    #         )
-    #         + b"\0"
-    #     )
-    #     return qname_bytes + struct.pack("!H", self.qtype)
 
 
 @dataclass
@@ -92,26 +84,29 @@ class DNSRecord:
     data: str  # type-dependent data which describes the resource
 
     def to_bytes(self) -> bytes:
-        name_parts = self.name.split(".")
 
-        # Remove the last empty part if qname ends with a dot
-        if name_parts[-1] == "":
-            name_parts = name_parts[:-1]
+        if self.name == ".":
+            # Special case for the root domain
+            name_bytes = b"\x00"
+        else:
+            name_parts = self.name.split(".")
 
-        name_bytes = (
-            b"".join(
-                (len(part).to_bytes(1, "big") + part.encode("ascii"))
-                for part in name_parts
+            # Remove the last empty part if qname ends with a dot
+            if name_parts[-1] == "":
+                name_parts = name_parts[:-1]
+
+            name_bytes = (
+                b"".join(
+                    (len(part).to_bytes(1, "big") + part.encode("ascii"))
+                    for part in name_parts
+                )
+                + b"\0"
             )
-            + b"\0"
-        )
 
         data_bytes = self.data.encode("ascii")
+        type_bytes = self.type_.to_bytes(2, byteorder="big")
         return (
-            name_bytes
-            + self.type_.to_bytes(2, byteorder="big")
-            + struct.pack("!H", len(self.data))
-            + data_bytes
+            name_bytes + type_bytes + struct.pack("!H", len(self.data)) + data_bytes
         )
 
 
@@ -193,7 +188,12 @@ class DNSResponse:
                 break
             else:
                 parts.append(reader.read(length).decode("ascii"))
-        return (".".join(parts) + ".") if parts else ""
+        
+        # Check if parts is empty, indicating a root domain
+        if not parts:
+            return "."
+        
+        return ".".join(parts) + "."
 
     @staticmethod
     def parse_record(reader: BytesIO) -> DNSRecord:

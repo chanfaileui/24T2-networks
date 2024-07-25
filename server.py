@@ -147,17 +147,17 @@ class Server:
             # )
 
             header = DNSHeader.parse_header(BytesIO(incoming_message[:12]))
-            # logging.debug(
-            #     f"ID: {header.qid}, Flags: {header.flags}, QD_COUNT: {header.num_questions}, AN_COUNT: {header.num_answers}, AU_COUNT: {header.num_authorities}, ADD_COUNT: {header.num_additionals}"
-            # )
+            logging.debug(
+                f"ID: {header.qid}, Flags: {header.flags}, QD_COUNT: {header.num_questions}, AN_COUNT: {header.num_answers}, AU_COUNT: {header.num_authorities}, ADD_COUNT: {header.num_additionals}"
+            )
 
             questions = self.parse_questions(incoming_message, header.num_questions)
             for question in questions:
                 # TODO: UNCOMMENT BEFORE SUBMITTING!!!
-                delay = random.randint(0, 4)
-                print(f"{received_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} rcv {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype):<5} (delay: {delay}s)")
+                # delay = random.randint(0, 4)
+                # print(f"{received_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} rcv {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype):<5} (delay: {delay}s)")
 
-                time.sleep(delay)
+                # time.sleep(delay)
 
                 response = self.process_query(header.qid, question)
                 self.server_socket.sendto(response, client_address)

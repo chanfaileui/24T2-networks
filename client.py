@@ -175,7 +175,7 @@ class Client:
 
     def print_record(self, record):
         print(
-            f"{record.name:20}{get_qtype(record.type_):5}{record.data:20}"
+            f"{record.name:<20}{get_qtype(record.type_):<7}{record.data}"
         )
 
     def decode_name(self, reader):
