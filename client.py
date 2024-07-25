@@ -232,8 +232,7 @@ if __name__ == "__main__":
         )
         exit(0)
 
-    # client = Client(int(sys.argv[1]), sys.argv[2], sys.argv[3], int(sys.argv[4]))
-    client = Client(49155, sys.argv[2], sys.argv[3], int(sys.argv[4]))
+    client = Client(int(sys.argv[1]), sys.argv[2], sys.argv[3], int(sys.argv[4]))
     try:
         client.run()
     except KeyboardInterrupt:
