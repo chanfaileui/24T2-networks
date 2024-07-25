@@ -135,7 +135,7 @@ class Server:
         # while True:
         # try to receive any incoming message from the sender
         try:
-            received_time = datetime.datetime.now()
+            # received_time = datetime.datetime.now()
             # logging.debug(
             #     f"Get a new message: {incoming_message} from {client_address}"
             # )
@@ -192,24 +192,62 @@ class Server:
             if qtype == "INVALID":
                 raise ValueError("Invalid qtype")
 
-            answers_str = self.cache.get_records(question.qname, qtype)
-            answers = [
-                DNSRecord(
-                    name=question.qname,
-                    type_=question.qtype,
-                    data=self.encode_rdata(question.qtype, answer),
-                )
-                for answer in answers_str
-            ]
+            answers = []
+            cname_chain = []
 
-            # resolve query
-            if not answers and qtype != TYPE_CNAME:
-                # check for a CNAME
-                self.resolve_query(answers, qname)
+            # Loop to handle CNAME chaining
+            while True:
+                answers_str = self.cache.get_records(qname, qtype)
+                if answers_str:
+                    answers.extend(
+                        [
+                            DNSRecord(
+                                name=qname,
+                                type_=question.qtype,
+                                data=self.encode_rdata(question.qtype, answer),
+                            )
+                            for answer in answers_str
+                        ]
+                    )
+                    break  # Exit loop if found answer
+
+                if qtype != TYPE_CNAME:
+                    cname_records = self.cache.get_records(qname, "CNAME")
+                    if cname_records:
+                        cname_record = cname_records[0]
+                        answers.append(
+                            DNSRecord(name=qname, type_=TYPE_CNAME, data=cname_record)
+                        )
+                        qname = cname_record  # Restart the query with the new CNAME
+                        cname_chain.append(qname)  # Track CNAME chain
+                        # qtype = TYPE_A  # Update qtype to resolve the A record for the new CNAME
+                    else:
+                        break  # Exit loop if no CNAME found and no final answer
+
+            # answers_str = self.cache.get_records(question.qname, qtype)
+            # answers = [
+            #     DNSRecord(
+            #         name=question.qname,
+            #         type_=question.qtype,
+            #         data=self.encode_rdata(question.qtype, answer),
+            #     )
+            #     for answer in answers_str
+            # ]
+
+            # # resolve query
+            # if not answers and qtype != TYPE_CNAME:
+            #     # check for a CNAME
+            #     self.resolve_query(answers, qname)
 
             authority = []
             additional = []
-            if not answers:
+
+            contains_record = False
+            for record in answers:
+                if record.type_ == question.qtype:
+                    contains_record = True
+                    break
+            if not contains_record:
                 ns_records = self.find_closest_nameservers(qname)
                 authority = ns_records
                 for ns_record in ns_records:
