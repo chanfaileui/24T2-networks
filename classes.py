@@ -48,8 +48,14 @@ class DNSHeader:
     # ref https://implement-dns.wizardzines.com/book/part_2
     @staticmethod
     def parse_header(reader):
-        items = struct.unpack("!HHHHHH", reader.read(12))
+        print('reader', reader)
+        header_data = reader.read(12)
+        if len(header_data) != 12:
+            raise ValueError(f"Header data is not 12 bytes: {len(header_data)} bytes received. Data: {header_data}")
+        items = struct.unpack("!HHHHHH", header_data)
         return DNSHeader(*items)
+        # items = struct.unpack("!HHHHHH", reader.read(12))
+        # return DNSHeader(*items)
 
 
 @dataclass
@@ -152,7 +158,12 @@ class DNSResponse:
 
     @classmethod
     def from_bytes(cls, data: bytes):
+        print('data', data)
         reader = BytesIO(data)
+        if len(data) < 12:
+            raise ValueError(f"Data too short: expected at least 12 bytes, got {len(data)} bytes")
+        header = DNSHeader.parse_header(reader)
+
         header = DNSHeader.parse_header(reader)
 
         questions = []
@@ -167,13 +178,14 @@ class DNSResponse:
 
         return cls(header, questions, answers, authorities, additionals)
 
+    # with reference to https://implement-dns.wizardzines.com/book/part_2
     @classmethod
     def decode_name(cls, reader):
         parts = []
         while True:
             length_bytes = reader.read(1)
             if not length_bytes:
-                break  # End of buffer reached
+                break  # End of buffer reached\\
             length = length_bytes[0]
             if length == 0:
                 break

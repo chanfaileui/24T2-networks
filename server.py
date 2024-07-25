@@ -161,6 +161,8 @@ class Server:
 
                 response = self.process_query(header.qid, question)
                 self.server_socket.sendto(response, client_address)
+                
+                print('sent response', response)
 
                 sent_time = datetime.datetime.now()
                 print(f"{sent_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} snd {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype)}")
@@ -185,6 +187,8 @@ class Server:
         if qtype == "INVALID":
             raise ValueError("Invalid qtype")
 
+        print('DNS QUEstion', question)
+
         answers_str = self.cache.get_records(question.qname, qtype)
         answers = [
             DNSRecord(
@@ -195,19 +199,13 @@ class Server:
             for answer in answers_str
         ]
 
-        if not answers:
-            closest_nameservers = self.find_closest_nameservers(qname)
-            if closest_nameservers:
-                answers = closest_nameservers
-            else:
-                return b""
-            
         if not answers and qtype != TYPE_CNAME:
-            cname_records = self.cache.get_records(qname, TYPE_CNAME)
+            cname_records = self.cache.get_records(qname, "CNAME")
             if cname_records:
                 answers = cname_records
                 qname = cname_records[0].rdata.decode('ascii')
-                answers.extend(self.cache.get_records(qname, qtype))
+                found = self.cache.get_records(qname, qtype)
+                answers.extend(found)
 
         if not answers:
             # Handle referral
@@ -215,7 +213,7 @@ class Server:
             authority = ns_records
             additional = []
             for ns_record in ns_records:
-                additional.extend(self.cache.get_records(ns_record.rdata.decode('ascii'), TYPE_A))
+                additional.extend(self.cache.get_records(ns_record.rdata.decode('ascii'), "A"))
         else:
             authority = []
             additional = []
@@ -247,10 +245,15 @@ class Server:
             ancestor = '.'.join(labels[i:])
             if ancestor == '':
                 ancestor = '.'  # Root domain
-            ns_records = self.cache.get_records(ancestor, TYPE_NS)
+            ns_records = self.cache.get_records(ancestor, 'NS')
             if ns_records:
-                return ns_records
+                return [DNSRecord(
+                    name=ancestor,
+                    type_=TYPE_NS,
+                    data=ns.rdata
+                ) for ns in ns_records]
         return []  # If no nameservers found, return an empty list
+
 
     @staticmethod
     def decode_qname(message, offset):

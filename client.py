@@ -114,7 +114,7 @@ class Client:
             try:
                 self.client_socket.settimeout(self.timeout)
                 incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
-                # logging.info(f"received reply from receiver:, {incoming_message}")
+                logging.info(f"received reply from receiver:, {incoming_message}")
                 # decoded_message = incoming_message.decode("utf-8")
                 # logging.info(f"decoded reply from receiver:, {decoded_message}")
                 self.handle_response(incoming_message)
@@ -139,9 +139,9 @@ class Client:
 
         :param response: The response packet from the server.
         """
-        # print("response received:", response)
+        print("response received:", response)
         dns_response = DNSResponse.from_bytes(response)
-        # print('dns reponse', dns_response)
+        print('dns reponse', dns_response)
 
         header = dns_response.header
         questions = dns_response.question
