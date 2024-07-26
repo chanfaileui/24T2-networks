@@ -16,7 +16,6 @@
     With reference to template material from Rui Li (Tutor for COMP3331/9331)
     https://github.com/lrlrlrlr/COMP3331_9331_23T1_Labs/tree/main/demo%20w8
 """
-# here are the libs you may find it useful:
 from io import BytesIO
 import json
 from pathlib import Path
@@ -26,7 +25,7 @@ import logging, sys  # to write the log
 import socket  # Core lib, to send packet via UDP socket
 from threading import (
     Thread,
-)  # (Optional)threading will make the timer easily implemented
+)
 import random  # for flp and rlp function
 
 import struct
@@ -102,13 +101,7 @@ class Server:
                 qname, qtype, record = line.split()
                 self.cache.add_record(qname, qtype, record)
 
-        # logging.info(f"Loaded {len(self.cache.get_cache())} records from {filename}")
-
     def run(self) -> None:
-        # logging.info(
-        #     f"The sender is using the address {self.server_address} to receive messages!"
-        # )
-        # logging.info(f"Receiving at {self.server_address}:")
         while True:
             try:
                 incoming_message, client_address = self.server_socket.recvfrom(
@@ -123,29 +116,16 @@ class Server:
 
     def handle_query(self, incoming_message, client_address) -> None:
         """
-        This function contain the main logic of the server
+        This function tries to receive any incoming message from the client
         """
-        # while True:
-        # try to receive any incoming message from the sender
         try:
             received_time = datetime.datetime.now()
-            # logging.debug(
-            #     f"Get a new message: {incoming_message} from {client_address}"
-            # )
-            # header = incoming_message[:12]  # 12 bytes header
-            # (qid, flags, qdcount, ancount, nscount, arcount) = struct.unpack(
-            #     "!HHHHHH", header
-            # )
-
             header = DNSHeader.parse_header(BytesIO(incoming_message[:12]))
-            # logging.debug(
-            #     f"ID: {header.qid}, Flags: {header.flags}, QD_COUNT: {header.num_questions}, AN_COUNT: {header.num_answers}, AU_COUNT: {header.num_authorities}, ADD_COUNT: {header.num_additionals}"
-            # )
 
             questions = self.parse_questions(incoming_message, header.num_questions)
             if questions:
                 for question in questions:
-                    # TODO: UNCOMMENT BEFORE SUBMITTING!!!
+                    # simulate delay to test multithreading
                     delay = random.randint(0, 4)
                     print(
                         f"{received_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} rcv {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype):<5} (delay: {delay}s)"
@@ -155,8 +135,6 @@ class Server:
 
                     response = self.process_query(header.qid, question)
                     self.server_socket.sendto(response or b"", client_address)
-
-                    # print("sent response", response)
 
                     sent_time = datetime.datetime.now()
                     print(
@@ -199,7 +177,7 @@ class Server:
                             DNSRecord(
                                 name=qname,
                                 type_=question.qtype,
-                                data=self.encode_rdata(question.qtype, answer),
+                                data=answer,
                             )
                             for answer in answers_str
                         ]
@@ -215,24 +193,8 @@ class Server:
                         )
                         qname = cname_record  # Restart the query with the new CNAME
                         cname_chain.append(qname)  # Track CNAME chain
-                        # qtype = TYPE_A  # Update qtype to resolve the A record for the new CNAME
                     else:
                         break  # Exit loop if no CNAME found and no final answer
-
-            # answers_str = self.cache.get_records(question.qname, qtype)
-            # answers = [
-            #     DNSRecord(
-            #         name=question.qname,
-            #         type_=question.qtype,
-            #         data=self.encode_rdata(question.qtype, answer),
-            #     )
-            #     for answer in answers_str
-            # ]
-
-            # # resolve query
-            # if not answers and qtype != TYPE_CNAME:
-            #     # check for a CNAME
-            #     self.resolve_query(answers, qname)
 
             authority = []
             additional = []
@@ -291,7 +253,7 @@ class Server:
                         DNSRecord(
                             name=new_qname,
                             type_=TYPE_A,
-                            data=self.encode_rdata(TYPE_A, a),
+                            data=a,
                         )
                         for a in a_results
                     ]
@@ -311,19 +273,16 @@ class Server:
             ancestor = ancestor if ancestor else "."  # root domain
 
             resolve_ns = self.cache.get_records(ancestor, "NS")
-            # print(self.cache.get_cache())
             if resolve_ns:
                 ns_records = [
                     DNSRecord(name=ancestor, type_=TYPE_NS, data=ns)
                     for ns in resolve_ns
                 ]
-                # logging.info("resolved NS")
-                # print("ns_records", ns_records)
                 return ns_records
 
             ancestor_parts = ancestor_parts[1:]
 
-        # If we've exhausted all ancestors (including root '.'), return an empty list
+        # if no ancestors, return an empty list
         return []
 
     @staticmethod
@@ -341,27 +300,8 @@ class Server:
         qname = ".".join(labels) + "."  # Re-add the trailing dot
         return qname, offset
 
-    @staticmethod
-    def encode_rdata(qtype: int, data: str):
-        # if qtype == TYPE_A:
-        #     return socket.inet_aton(data)  # Convert IP address to 4-byte format
-        # else:
-        # return data.encode("ascii")  # For other types, return ASCII-encoded bytes
-        return data
-
 
 if __name__ == "__main__":
-    # logging is useful for the log part: https://docs.python.org/3/library/logging.html
-    logging.basicConfig(
-        # filename="server_log.txt",
-        stream=sys.stderr,
-        level=logging.DEBUG,
-        # format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
-        # datefmt="%Y-%m-%d %H:%M:%S",
-        format="%(asctime)s.%(msecs)03d [%(threadName)s] %(levelname)-8s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
     if len(sys.argv) != 2:
         print("\n===== Error usage, python3 server.py server_port ======\n")
         exit(0)

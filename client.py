@@ -16,23 +16,19 @@
     With reference to template material from Rui Li (Tutor for COMP3331/9331)
     https://github.com/lrlrlrlr/COMP3331_9331_23T1_Labs/tree/main/demo%20w8
 """
-# here are the libs you may find it useful:
 from io import BytesIO
 import threading
-import datetime, time  # to calculate the time delta of packet transmission
-import logging, sys  # to write the log
+import sys
 import random
 import socket  # Core lib, to send packet via UDP socket
 from threading import (
     Thread,
-)  # (Optional)threading will make the timer easily implemented
-import dataclasses
+)  # threading will make the timer easily implemented
 import struct
 
 from classes import (
     DNSHeader,
     DNSQuestion,
-    # DNSRecord,
     DNSResponse,
     BUFFERSIZE,
     FLAG_QUERY,
@@ -72,7 +68,7 @@ class Client:
             family=socket.AF_INET, type=socket.SOCK_DGRAM
         )
 
-        #  (Optional) start the listening sub-thread first
+        # start the listening sub-thread first
         self._is_active = True  # for the multi-threading
         self.response_received_event = threading.Event()
         self.listen_thread = Thread(target=self.listen)
@@ -102,21 +98,15 @@ class Client:
 
         content = header_bytes + question_bytes
 
-        # logging.debug(f"ts: {datetime.datetime.timestamp(datetime.datetime.now())}")
         self.client_socket.sendto(content, self.server_address)
-        # logging.debug(f"Sent DNS query for {self.qname} ({self.qtype})")
 
     def listen(self):
         """(Multithread is used)listen the response from receiver"""
-        # logging.debug("Sub-thread for listening is running")
 
         while self._is_active:
             try:
                 self.client_socket.settimeout(self.timeout)
                 incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
-                # logging.info(f"received reply from receiver:, {incoming_message}")
-                # decoded_message = incoming_message.decode("utf-8")
-                # logging.info(f"decoded reply from receiver:, {decoded_message}")
                 self.handle_response(incoming_message)
                 self.response_received_event.set()
                 self._is_active = False  # Stop listening after receiving the response
@@ -130,18 +120,13 @@ class Client:
                 else:
                     raise e
 
-        # while self._is_active:
-        #     incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
-
     def handle_response(self, response):
         """
         Process the DNS response from the server.
 
         :param response: The response packet from the server.
         """
-        # print("response received:", response)
         dns_response = DNSResponse.from_bytes(response)
-        # print('dns reponse', dns_response)
 
         header = dns_response.header
         questions = dns_response.question
@@ -174,9 +159,7 @@ class Client:
         return dns_response
 
     def print_record(self, record):
-        print(
-            f"{record.name:<20}{get_qtype(record.type_):<7}{record.data}"
-        )
+        print(f"{record.name:<20}{get_qtype(record.type_):<7}{record.data}")
 
     def decode_name(self, reader):
         parts = []
@@ -217,15 +200,6 @@ class Client:
 
 
 if __name__ == "__main__":
-    # logging is useful for the log part: https://docs.python.org/3/library/logging.html
-    logging.basicConfig(
-        # filename="client_log.txt",
-        stream=sys.stderr,
-        level=logging.DEBUG,
-        format="%(asctime)s.%(msecs)03d [%(threadName)s] %(levelname)-8s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
     if len(sys.argv) != 5:
         print(
             "\n===== Error usage, python3 client.py server_port qname qtype timeout ======\n"

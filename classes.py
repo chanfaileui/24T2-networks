@@ -50,11 +50,11 @@ class DNSHeader:
         # print('reader', reader)
         header_data = reader.read(12)
         if len(header_data) != 12:
-            raise ValueError(f"Header data is not 12 bytes: {len(header_data)} bytes received. Data: {header_data}")
+            raise ValueError(
+                f"Header data is not 12 bytes: {len(header_data)} bytes received. Data: {header_data}"
+            )
         items = struct.unpack("!HHHHHH", header_data)
         return DNSHeader(*items)
-        # items = struct.unpack("!HHHHHH", reader.read(12))
-        # return DNSHeader(*items)
 
 
 @dataclass
@@ -110,9 +110,7 @@ class DNSRecord:
 
         data_bytes = self.data.encode("ascii")
         type_bytes = self.type_.to_bytes(2, byteorder="big")
-        return (
-            name_bytes + type_bytes + struct.pack("!H", len(self.data)) + data_bytes
-        )
+        return name_bytes + type_bytes + struct.pack("!H", len(self.data)) + data_bytes
 
 
 @dataclass
@@ -135,35 +133,17 @@ class DNSResponse:
             message += add.to_bytes()
         return message
 
-    # def to_bytes(self):
-    #     message = self.header.to_bytes()
-    #     print("message", message)
-    #     print("question", self.question)
-    #     for q in self.question:
-    #         qname, qtype = q
-    #         message += (
-    #             qname.encode("ascii") + b"\0"
-    #         )  # QNAME is a domain name ending with a null byte
-    #         message += qtype.to_bytes(2, byteorder='big')  # QTYPE is 2 bytes
-    #     print("final sent message", message)
-    #     return message
-
-    # @classmethod
-    # def decode_name_simple(cls, reader) -> str:
-    #     parts = []
-    #     while (length := reader.read(1)[0]) != 0:
-    #         parts.append(reader.read(length))
-    #     return ".".join(parts)
-
     @classmethod
     def from_bytes(cls, data: bytes):
         # print('data', data)
         reader = BytesIO(data)
         if len(data) < 12:
-            raise ValueError(f"Data too short: expected at least 12 bytes, got {len(data)} bytes")
-        
+            raise ValueError(
+                f"Data too short: expected at least 12 bytes, got {len(data)} bytes"
+            )
+
         header = DNSHeader.parse_header(reader)
-        
+
         questions = []
         for _ in range(header.num_questions):
             qname = cls.decode_name(reader)
@@ -183,7 +163,7 @@ class DNSResponse:
         while True:
             length_bytes = reader.read(1)
             if not length_bytes:
-                break  # End of buffer reached\\
+                break  # End of buffer reached
             length = length_bytes[0]
             if length == 0:
                 break
@@ -198,11 +178,11 @@ class DNSResponse:
                 break
             else:
                 parts.append(reader.read(length).decode("ascii"))
-        
+
         # Check if parts is empty, indicating a root domain
         if not parts:
             return "."
-        
+
         return ".".join(parts) + "."
 
     @staticmethod
