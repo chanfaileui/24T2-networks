@@ -1,6 +1,5 @@
 #! /usr/bin/env python3
 
-# according to https://datatracker.ietf.org/doc/html/rfc1035#section-3.2.2
 from dataclasses import dataclass
 import dataclasses
 from io import BytesIO
@@ -48,7 +47,7 @@ class DNSHeader:
     # ref https://implement-dns.wizardzines.com/book/part_2
     @staticmethod
     def parse_header(reader):
-        print('reader', reader)
+        # print('reader', reader)
         header_data = reader.read(12)
         if len(header_data) != 12:
             raise ValueError(f"Header data is not 12 bytes: {len(header_data)} bytes received. Data: {header_data}")
@@ -158,7 +157,7 @@ class DNSResponse:
 
     @classmethod
     def from_bytes(cls, data: bytes):
-        print('data', data)
+        # print('data', data)
         reader = BytesIO(data)
         if len(data) < 12:
             raise ValueError(f"Data too short: expected at least 12 bytes, got {len(data)} bytes")

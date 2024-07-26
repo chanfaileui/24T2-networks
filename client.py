@@ -108,20 +108,20 @@ class Client:
 
     def listen(self):
         """(Multithread is used)listen the response from receiver"""
-        logging.debug("Sub-thread for listening is running")
+        # logging.debug("Sub-thread for listening is running")
 
         while self._is_active:
             try:
                 self.client_socket.settimeout(self.timeout)
                 incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
-                logging.info(f"received reply from receiver:, {incoming_message}")
+                # logging.info(f"received reply from receiver:, {incoming_message}")
                 # decoded_message = incoming_message.decode("utf-8")
                 # logging.info(f"decoded reply from receiver:, {decoded_message}")
                 self.handle_response(incoming_message)
                 self.response_received_event.set()
                 self._is_active = False  # Stop listening after receiving the response
             except socket.timeout:
-                logging.error("Request timed out")
+                print("Request timed out")
                 self._is_active = False
             except OSError as e:
                 if not self._is_active:
@@ -130,8 +130,8 @@ class Client:
                 else:
                     raise e
 
-        while self._is_active:
-            incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
+        # while self._is_active:
+        #     incoming_message, _ = self.client_socket.recvfrom(BUFFERSIZE)
 
     def handle_response(self, response):
         """
@@ -139,9 +139,9 @@ class Client:
 
         :param response: The response packet from the server.
         """
-        print("response received:", response)
+        # print("response received:", response)
         dns_response = DNSResponse.from_bytes(response)
-        print('dns reponse', dns_response)
+        # print('dns reponse', dns_response)
 
         header = dns_response.header
         questions = dns_response.question
@@ -208,11 +208,11 @@ class Client:
         """
         self.create_and_send_query()
 
-        self.response_received_event.wait(self.timeout + 1)
+        self.response_received_event.wait(self.timeout)
         self._is_active = False  # close the sub-thread
 
         self.client_socket.close()
-        logging.info("Socket closed.")
+        print("Socket closed.")
         self.listen_thread.join()
 
 

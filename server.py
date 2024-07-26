@@ -46,7 +46,7 @@ from classes import (
     get_qtype,
 )
 
-MASTER_FILE = "sample_master.txt"
+MASTER_FILE = "master.txt"
 
 
 class DNSCache:
@@ -67,12 +67,6 @@ class DNSCache:
     def get_records(self, qname: str, qtype: str) -> list:
         qname = qname.lower()
         return self.cache.get(qname, {}).get(qtype, [])
-
-    def print(self):
-        for qname, qtypes in self.cache.items():
-            for qtype, records in qtypes.items():
-                for record in records:
-                    print(qname, qtype, record)
 
 
 class Server:
@@ -95,10 +89,9 @@ class Server:
 
         # creating DNS cache
         self.cache = DNSCache()
-        self.load_records(MASTER_FILE)  # You need to implement this method
+        self.load_records(MASTER_FILE)
 
     def load_records(self, filename: str):
-        # Implement loading records from the master file into self.cache
         filepath = Path(filename)
 
         if not filepath.exists():
@@ -115,7 +108,7 @@ class Server:
         # logging.info(
         #     f"The sender is using the address {self.server_address} to receive messages!"
         # )
-        logging.info(f"Receiving at {self.server_address}:")
+        # logging.info(f"Receiving at {self.server_address}:")
         while True:
             try:
                 incoming_message, client_address = self.server_socket.recvfrom(
@@ -135,7 +128,7 @@ class Server:
         # while True:
         # try to receive any incoming message from the sender
         try:
-            # received_time = datetime.datetime.now()
+            received_time = datetime.datetime.now()
             # logging.debug(
             #     f"Get a new message: {incoming_message} from {client_address}"
             # )
@@ -145,23 +138,25 @@ class Server:
             # )
 
             header = DNSHeader.parse_header(BytesIO(incoming_message[:12]))
-            logging.debug(
-                f"ID: {header.qid}, Flags: {header.flags}, QD_COUNT: {header.num_questions}, AN_COUNT: {header.num_answers}, AU_COUNT: {header.num_authorities}, ADD_COUNT: {header.num_additionals}"
-            )
+            # logging.debug(
+            #     f"ID: {header.qid}, Flags: {header.flags}, QD_COUNT: {header.num_questions}, AN_COUNT: {header.num_answers}, AU_COUNT: {header.num_authorities}, ADD_COUNT: {header.num_additionals}"
+            # )
 
             questions = self.parse_questions(incoming_message, header.num_questions)
             if questions:
                 for question in questions:
                     # TODO: UNCOMMENT BEFORE SUBMITTING!!!
-                    # delay = random.randint(0, 4)
-                    # print(f"{received_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} rcv {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype):<5} (delay: {delay}s)")
+                    delay = random.randint(0, 4)
+                    print(
+                        f"{received_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} rcv {client_address[1]:<5}: {header.qid:<4} {question.qname:<15} {get_qtype(question.qtype):<5} (delay: {delay}s)"
+                    )
 
-                    # time.sleep(delay)
+                    time.sleep(delay)
 
                     response = self.process_query(header.qid, question)
-                    self.server_socket.sendto(response, client_address)
+                    self.server_socket.sendto(response or b"", client_address)
 
-                    print("sent response", response)
+                    # print("sent response", response)
 
                     sent_time = datetime.datetime.now()
                     print(
@@ -322,8 +317,8 @@ class Server:
                     DNSRecord(name=ancestor, type_=TYPE_NS, data=ns)
                     for ns in resolve_ns
                 ]
-                logging.info("resolved NS")
-                print("ns_records", ns_records)
+                # logging.info("resolved NS")
+                # print("ns_records", ns_records)
                 return ns_records
 
             ancestor_parts = ancestor_parts[1:]
