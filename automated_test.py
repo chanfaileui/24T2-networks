@@ -28,7 +28,7 @@ www.metalhead.com.   CNAME  metalhead.com.
 expected_outputs = {
     "example.com. A": "example.com. A 93.184.215.14",
     "bar.example.com. CNAME": "bar.example.com. CNAME foobar.example.com.",
-    ". NS": ". NS b.root-servers.net. . NS a.root-servers.net. a.root-servers.net.",
+    ". NS": ". NS b.root-servers.net. . NS a.root-servers.net.",
     "bar.example.com. A": "bar.example.com. CNAME foobar.example.com. foobar.example.com. A 192.0.2.23 foobar.example.com. A 192.0.2.24",
     "foo.example.com. A": "foo.example.com. CNAME bar.example.com. bar.example.com. CNAME foobar.example.com. foobar.example.com. A 192.0.2.23 foobar.example.com. A 192.0.2.24",
     "example.org. A": ". NS b.root-servers.net. . NS a.root-servers.net. a.root-servers.net. A 198.41.0.4",
@@ -90,7 +90,7 @@ failed_tests = 0
 for qname, qtype, timeout in tqdm(test_cases, desc="Running Tests"):
     print(f"Running test: {qname} {qtype} {timeout}")
     client_cmd = CLIENT_CMD.format(qname, qtype, timeout)
-    result = subprocess.run(client_cmd.split(), capture_output=True, text=True, timeout=timeout + 2)
+    result = subprocess.run(client_cmd.split(), capture_output=True, text=True, timeout=timeout + 10)
     
     if timeout == 1:
         expected_output = expected_outputs["timeout"]

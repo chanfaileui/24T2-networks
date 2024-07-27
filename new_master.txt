@@ -1,0 +1,15 @@
+example.net.         A      192.168.1.1
+example.org.         NS     ns1.example.org.
+example.org.         NS     ns2.example.org.
+ns1.example.org.     A      192.168.2.1
+ns2.example.org.     A      192.168.2.2
+alias.example.com.   CNAME  real.example.com.
+real.example.com.    A      192.168.3.1
+test.example.com.    A      192.168.4.1
+test.example.com.    A      192.168.4.2
+example.edu.         NS     ns1.example.edu.
+example.edu.         NS     ns2.example.edu.
+ns1.example.edu.     A      192.168.5.1
+ns2.example.edu.     A      192.168.5.2
+www.example.com.     CNAME  example.com.
+example.com.         A      192.168.6.1

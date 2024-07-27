@@ -191,7 +191,7 @@ class Client:
         """
         self.create_and_send_query()
 
-        self.response_received_event.wait(self.timeout)
+        self.response_received_event.wait(self.timeout+2) # some more time to listen for response/timeouts
         self._is_active = False  # close the sub-thread
 
         self.client_socket.close()
